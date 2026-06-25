@@ -1,6 +1,6 @@
 # DiyaLikha AI — Multi-Agent Translation Engine (Box 4)
 
-This is a runnable implementation of **System 1, Box 4** from your architecture
+This is a runnable implementation of **System 1, Box 4** from the architecture
 diagram: the LangGraph-orchestrated A1 → A2 → A3 agent pipeline with a Planner
 that can send content back for revision.
 
