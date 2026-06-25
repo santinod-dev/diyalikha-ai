@@ -1,1 +1,1 @@
-# dialikha-ai
+# DiyaLikha-AI
