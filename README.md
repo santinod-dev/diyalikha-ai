@@ -1,52 +1,23 @@
+# 🌏 DiyalikhaAI
 
-<<<<<<< Codex-Multi-Agent-Translator-System
-# DiyaLikha-AI
-# Multi-Agent Translation System
+DiyalikhaAI is an AI-powered platform that helps educators create localized, dialect-aware learning materials for elementary students in the Philippines.
 
-This is a runnable Python scaffold for the architecture in the diagram:
+Instead of simply translating text, DiyalikhaAI adapts educational content to a student's local language, grade level, and cultural context, making lessons easier to understand and more engaging for multilingual communities.
 
-1. User input
-2. Preprocessing
-3. RAG knowledge base
-4. Planner-orchestrated agents
-5. Classroom-ready output
+## ✨ Features
 
-It is designed for Philippine language and dialect localization workflows. The default `mock` LLM provider lets you run the pipeline immediately without API keys. Replace it with a real provider in `src/mats/llm.py` when you are ready to connect a model.
+- 📄 Upload lesson files or paste lesson text
+- 🌐 Translate lessons into Philippine dialects
+- 🎓 Adapt content based on grade level and subject
+- ✍️ AI-powered proofreading and quality checking
+- 🤖 AI teaching assistant for lesson plans, quizzes, worksheets, and summaries
+- 📚 Personal library for storing and managing translated materials
 
-## Quick Start
 
-```powershell
-cd outputs/multi_agent_translation_system
-python -m src.mats.cli --text "Photosynthesis is the process by which plants make food from sunlight." --target-language "Filipino" --grade-level "Grade 6" --subject "Science"
-```
+## 🎯 Target Users
 
-Or translate a text file:
-
-```powershell
-python -m src.mats.cli --file sample_input.txt --target-language "Cebuano" --grade-level "Grade 4" --subject "Araling Panlipunan" --output result.json
-```
-
-## Project Structure
-
-```text
-src/mats/
-  agents.py          # Context/Linguist, Educator, and Quality Checker agents
-  cli.py             # Command-line entry point
-  knowledge_base.py  # Lightweight local RAG retrieval
-  llm.py             # Mock LLM plus provider interface
-  models.py          # Shared dataclasses
-  orchestrator.py    # Planner that coordinates agents
-  preprocessing.py   # Text cleaning, metadata, chunking
-data/knowledge_base/
-  curriculum_standards.json
-  language_terms.json
-  cultural_examples.json
-```
-
-## Notes
-
-- The current parser handles plain text directly. PDF, DOCX, PPTX, and OCR are represented as extension points in `preprocessing.py`.
-- The RAG layer uses simple keyword overlap so it works without extra dependencies. You can replace it with embeddings/vector search later.
-- The mock LLM produces a traceable pseudo-translation so you can verify the pipeline shape before connecting a production model.
-
-=======
+- Teachers
+- Schools
+- Local Government Units (LGUs)
+- NGOs
+- Educational organizations
