@@ -1,3 +1,6 @@
+
+<<<<<<< Codex-Multi-Agent-Translator-System
+# DiyaLikha-AI
 # Multi-Agent Translation System
 
 This is a runnable Python scaffold for the architecture in the diagram:
@@ -46,3 +49,4 @@ data/knowledge_base/
 - The RAG layer uses simple keyword overlap so it works without extra dependencies. You can replace it with embeddings/vector search later.
 - The mock LLM produces a traceable pseudo-translation so you can verify the pipeline shape before connecting a production model.
 
+=======
