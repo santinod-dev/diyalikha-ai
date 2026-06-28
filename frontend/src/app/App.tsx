@@ -1,4 +1,12 @@
 import { useState, useRef, useEffect, useCallback } from "react";
+import {
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  signOut,
+  onAuthStateChanged,
+  type User as FirebaseUser,
+} from "firebase/auth";
+import { auth } from "../lib/firebase";
 import { motion, AnimatePresence } from "motion/react";
 import {
   Settings, Upload, ChevronDown, Send, Check, Pencil,
@@ -258,7 +266,7 @@ function AppHeader({ lang, setLang, isDark, onToggleDark }: {
 /* ─────────────────────────────────────────────────────
    Sidebar — layoutId sliding pill animation
 ───────────────────────────────────────────────────── */
-function Sidebar({ active, nav, isDark }: { active:View; nav:(v:View)=>void; isDark:boolean }) {
+function Sidebar({ active, nav, isDark, onLogout }: { active:View; nav:(v:View)=>void; isDark:boolean; onLogout:()=>void }) {
   /* All icons are white. Active icon is full opacity + glassmorphism pill.
      Inactive icons are white at reduced opacity. No color tints. */
   const items: { id:View; label:string; renderIcon:(isActive:boolean)=>React.ReactNode }[] = [
@@ -320,6 +328,18 @@ function Sidebar({ active, nav, isDark }: { active:View; nav:(v:View)=>void; isD
           );
         })}
       </nav>
+
+      {/* Logout button */}
+      <motion.button onClick={onLogout} whileHover={{ scale:1.08 }} whileTap={{ scale:0.88 }}
+        className="p-2 rounded-xl opacity-55 hover:opacity-90 transition-opacity"
+        style={{ border:"1px solid rgba(255,255,255,0.2)" }} title="Log out">
+        {/* Arrow-right-from-box icon via SVG */}
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+          <polyline points="16 17 21 12 16 7"/>
+          <line x1="21" y1="12" x2="9" y2="12"/>
+        </svg>
+      </motion.button>
 
       <motion.button whileHover={{ scale:1.08, rotate:30 }} whileTap={{ scale:0.88 }}
         className="p-2 rounded-xl opacity-55 hover:opacity-90 transition-opacity"
@@ -403,6 +423,8 @@ function LoginPage({ onLogin, lang }: { onLogin:(name:string)=>void; lang:Lang }
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
+  const [authError, setAuthError] = useState<string | null>(null);
+  const [authLoading, setAuthLoading] = useState(false);
 
   const leaves = [
     {x:4,y:8,size:24,delay:0,dur:5,rot:-22},{x:90,y:6,size:19,delay:0.7,dur:5.5,rot:28},
@@ -545,11 +567,29 @@ function LoginPage({ onLogin, lang }: { onLogin:(name:string)=>void; lang:Lang }
                 {/* Primary submit */}
                 <motion.button
                   className="flex-1 font-['Montserrat',sans-serif] font-bold text-base py-3 rounded-[24px]"
-                  style={btnStyle(true)}
-                  whileHover={{ scale:1.04, boxShadow:"0 10px 36px rgba(0,115,255,0.55)" }}
-                  whileTap={{ scale:0.95 }}
-                  onClick={() => onLogin(name || "User")}>
-                  {step==="login" ? tx.login : tx.register}
+                  style={{ ...btnStyle(true), opacity: authLoading ? 0.7 : 1 }}
+                  whileHover={{ scale: authLoading ? 1 : 1.04, boxShadow:"0 10px 36px rgba(0,115,255,0.55)" }}
+                  whileTap={{ scale: authLoading ? 1 : 0.95 }}
+                  disabled={authLoading}
+                  onClick={async () => {
+                    setAuthError(null);
+                    setAuthLoading(true);
+                    try {
+                      if (step === "login") {
+                        const cred = await signInWithEmailAndPassword(auth, email, password);
+                        onLogin(cred.user.displayName || cred.user.email || "User");
+                      } else {
+                        const cred = await createUserWithEmailAndPassword(auth, email, password);
+                        onLogin(name || cred.user.email || "User");
+                      }
+                    } catch (e: unknown) {
+                      const msg = e instanceof Error ? e.message : String(e);
+                      setAuthError(msg.replace("Firebase: ", "").replace(/ \(auth\/.*\)\.?/, ""));
+                    } finally {
+                      setAuthLoading(false);
+                    }
+                  }}>
+                  {authLoading ? "..." : (step==="login" ? tx.login : tx.register)}
                 </motion.button>
                 {/* Switch action */}
                 <motion.button
@@ -562,8 +602,15 @@ function LoginPage({ onLogin, lang }: { onLogin:(name:string)=>void; lang:Lang }
                 </motion.button>
               </motion.div>
 
+              {/* Error message */}
+              {authError && (
+                <p className="text-xs text-red-500 text-center font-['Poppins',sans-serif] -mt-1">
+                  {authError}
+                </p>
+              )}
+
               {/* Back link */}
-              <button onClick={() => setStep("welcome")}
+              <button onClick={() => { setStep("welcome"); setAuthError(null); }}
                 className="text-xs text-[#0073ff]/70 hover:text-[#0073ff] hover:underline text-center font-['Poppins',sans-serif] transition-colors">
                 {tx.back}
               </button>
@@ -699,11 +746,12 @@ function HomePage({ nav, lang, setLang, isDark, onToggleDark, userName }:{
 /* ─────────────────────────────────────────────────────
    Screen C — Translator (with embedded Proofread + download + paste popup)
 ───────────────────────────────────────────────────── */
-function TranslatorPage({ nav, lang, setLang, isDark, onToggleDark, onSaveDraft }:{
+function TranslatorPage({ nav, lang, setLang, isDark, onToggleDark, onSaveDraft, preloadItem }:{
   nav:(v:View)=>void; lang:Lang; setLang:(l:Lang)=>void; isDark:boolean; onToggleDark:()=>void; onSaveDraft:(f:DraftFile)=>void;
+  preloadItem?: { doc_id: string; translated_text: string; mode?: TransMode };
 }) {
   const tx = T[lang];
-  const [transMode, setTransMode] = useState<TransMode>("translate");
+  const [transMode, setTransMode] = useState<TransMode>(preloadItem?.mode ?? "translate");
   const [gradeLevel, setGradeLevel] = useState("Grade 3");
   const [subject, setSubject] = useState("Science & Nature");
   const [dialect, setDialect] = useState("Waray (Samar-Leyte)");
@@ -717,6 +765,35 @@ function TranslatorPage({ nav, lang, setLang, isDark, onToggleDark, onSaveDraft 
   const [pastedText, setPastedText] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
 
+  // ── API state ──────────────────────────────────────────────────────────────
+  const [extractedText, setExtractedText] = useState("");
+  const [currentDocId, setCurrentDocId] = useState<string | null>(preloadItem?.doc_id ?? null);
+  const [translatedText, setTranslatedText] = useState(preloadItem?.translated_text ?? "");
+  const [isUploading, setIsUploading] = useState(false);
+  const [isTranslating, setIsTranslating] = useState(false);
+  const [translateError, setTranslateError] = useState<string | null>(null);
+
+  // ── Proofread state ────────────────────────────────────────────────────────
+  const [suggestions, setSuggestions] = useState<Array<{severity:string;original:string;corrected:string;reason:string}>>([]);
+  const [proofText, setProofText] = useState(preloadItem?.translated_text ?? "");
+  const [addressedCount, setAddressedCount] = useState(0);
+  const [isProofreading, setIsProofreading] = useState(false);
+
+  // Load proofreading suggestions when entering proofread mode
+  useEffect(() => {
+    if (transMode === "proofread" && translatedText && suggestions.length === 0 && !isProofreading) {
+      setIsProofreading(true);
+      setProofText(translatedText);
+      import("../lib/api").then(({ apiClient }) =>
+        apiClient.post<{ quality_score: number; suggestions: typeof suggestions }>(
+          "/proofread", { text: translatedText, dialect, grade_level: gradeLevel }
+        ).then(res => setSuggestions(res.suggestions))
+          .catch(() => {/* silently fall back to empty suggestions */})
+          .finally(() => setIsProofreading(false))
+      );
+    }
+  }, [transMode]);
+
   const cardBg = isDark?"bg-gray-800":"bg-white";
   const textMain = isDark?"text-white":"text-[#1e293b]";
   const textMuted = isDark?"text-gray-400":"text-[#64748b]";
@@ -726,23 +803,79 @@ function TranslatorPage({ nav, lang, setLang, isDark, onToggleDark, onSaveDraft 
   const subjects = lang==="en"?["Science & Nature","Mathematics","English","Filipino","Social Studies"]:["Agham","Matematika","Ingles","Filipino","Araling Panlipunan"];
   const dialects = ["Waray (Samar-Leyte)","Ilocano","Cebuano","Bicolano","Kapampangan","Hiligaynon"];
 
-  /* Immediate download — no prompt */
+  /* Upload file → extract text */
+  const handleFileSelected = useCallback(async (file: File) => {
+    setHasFile(true);
+    setFileName(file.name);
+    setTranslateError(null);
+    setIsUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const { apiClient } = await import("../lib/api");
+      const res = await apiClient.upload<{ doc_id: string; extracted_text: string; storage_url: string }>(
+        "/files/upload", formData
+      );
+      setExtractedText(res.extracted_text);
+      setCurrentDocId(res.doc_id);
+    } catch (e: unknown) {
+      setTranslateError(e instanceof Error ? e.message : "Upload failed.");
+    } finally {
+      setIsUploading(false);
+    }
+  }, []);
+
+  /* Translate */
+  const handleTranslate = useCallback(async () => {
+    const text = extractedText || pastedText;
+    if (!text) return;
+    setTranslateError(null);
+    setIsTranslating(true);
+    setTranslatedText("");
+    try {
+      const { apiClient } = await import("../lib/api");
+      const res = await apiClient.post<{ translated_text: string; bilingual_script: string; key_terms: unknown[]; quality_score: number }>(
+        "/translate", { text, grade_level: gradeLevel, subject_area: subject, target_dialect: dialect, source_language: inputLang === "english" ? "English" : "Tagalog" }
+      );
+      setTranslatedText(res.translated_text);
+      setSuggestions([]);
+      // Persist to library
+      if (currentDocId) {
+        apiClient.patch(`/library/${currentDocId}`, {
+          translated_text: res.translated_text, status: "complete",
+        }).catch(() => {});
+      }
+    } catch (e: unknown) {
+      setTranslateError(e instanceof Error ? e.message : "Translation failed.");
+    } finally {
+      setIsTranslating(false);
+    }
+  }, [extractedText, pastedText, gradeLevel, subject, dialect, inputLang, currentDocId]);
+
+  /* Download */
   const handleDownload = useCallback(() => {
-    if (!exportFmt) return;
-    const content = `DiyaLikha AI — Translated Lesson Material\n\nGrade Level: ${gradeLevel}\nSubject: ${subject}\nTarget Dialect: ${dialect}\n\n--- TRANSLATED CONTENT ---\n\nModulo 1: Dagiti Numero ken Panagbilang\n\nTi maysa a polynomial ket buklen dagiti variables ken coefficients. Kadagiti ubing iti ${gradeLevel}, nasken a maawatanda ti konsepto ti panagbilang.\n\nUsarentayo ti lokal a dialect tapno nalaklaka a maawatan dagiti ubing ti leksion.\n`;
-    const mimeType = exportFmt==="pdf" ? "application/pdf" : "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
-    const blob = new Blob([content], { type:"text/plain" });
+    if (!exportFmt || !translatedText) return;
+    const content = `DiyaLikha AI — Translated Lesson Material\n\nGrade Level: ${gradeLevel}\nSubject: ${subject}\nTarget Dialect: ${dialect}\n\n--- TRANSLATED CONTENT ---\n\n${translatedText}`;
+    const blob = new Blob([content], { type: "text/plain" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url; a.download = `lesson-material.${exportFmt}`; a.click();
     URL.revokeObjectURL(url);
-  }, [exportFmt, gradeLevel, subject, dialect]);
+  }, [exportFmt, translatedText, gradeLevel, subject, dialect]);
 
-  const handleSaveDraft = () => {
-    onSaveDraft({ id:Date.now().toString(), name:"Mathematics Module 1", category:"MATHEMATICS",
-      grade:"Grade 4", subtitle:"English to Ilocano — Draft",
-      date:new Date().toLocaleDateString("en-US",{month:"2-digit",day:"2-digit",year:"2-digit"}) });
-  };
+  /* Save draft (proofread) */
+  const handleSaveDraft = useCallback(async () => {
+    if (currentDocId) {
+      const { apiClient } = await import("../lib/api");
+      apiClient.patch(`/library/${currentDocId}`, { translated_text: proofText, status: "review" }).catch(() => {});
+    }
+    onSaveDraft({
+      id: currentDocId ?? Date.now().toString(), name: fileName || "Translated Material",
+      category: subject.toUpperCase(), grade: gradeLevel,
+      subtitle: `${inputLang === "english" ? "English" : "Tagalog"} to ${dialect}`,
+      date: new Date().toLocaleDateString("en-US", { month:"2-digit", day:"2-digit", year:"2-digit" }),
+    });
+  }, [currentDocId, proofText, fileName, subject, gradeLevel, inputLang, dialect, onSaveDraft]);
 
   return (
     <>
@@ -804,23 +937,38 @@ function TranslatorPage({ nav, lang, setLang, isDark, onToggleDark, onSaveDraft 
                       ))}
                     </div>
                   </div>
-                  <input ref={fileRef} type="file" accept=".pdf,.docx,.txt,.pptx" className="hidden"
-                    onChange={e=>{const f=e.target.files?.[0];if(f){setHasFile(true);setFileName(f.name);}}}/>
+                  <input ref={fileRef} type="file" accept=".pdf,.docx,.txt" className="hidden"
+                    onChange={e=>{const f=e.target.files?.[0];if(f) handleFileSelected(f);}}/>
                   <div onClick={()=>fileRef.current?.click()}
                     onDragOver={e=>{e.preventDefault();setDragging(true);}} onDragLeave={()=>setDragging(false)}
-                    onDrop={e=>{e.preventDefault();setDragging(false);const f=e.dataTransfer.files[0];if(f){setHasFile(true);setFileName(f.name);}}}
+                    onDrop={e=>{e.preventDefault();setDragging(false);const f=e.dataTransfer.files[0];if(f) handleFileSelected(f);}}
                     className={`border-2 border-dashed rounded-2xl p-8 text-center cursor-pointer transition-all ${dragging?"border-[#2ec2fd] bg-[#f0fbff]":`${isDark?"border-gray-600 bg-gray-750":"border-[#cbd4db] bg-[#f9fbff]"}`}`}>
                     <div className="w-14 h-14 rounded-full bg-[#bf8ffd]/15 flex items-center justify-center mx-auto mb-3">
                       <Upload className="text-[#bf8ffd]" size={24}/>
                     </div>
-                    <p className={`font-['Plus_Jakarta_Sans',sans-serif] font-bold text-sm mb-1 ${textMain}`}>{hasFile?fileName:tx.dropLesson}</p>
-                    <p className={`text-xs ${textMuted}`}>{tx.dropSub}</p>
+                    <p className={`font-['Plus_Jakarta_Sans',sans-serif] font-bold text-sm mb-1 ${textMain}`}>
+                      {isUploading ? "Uploading..." : hasFile ? fileName : tx.dropLesson}
+                    </p>
+                    <p className={`text-xs ${textMuted}`}>DOCX  PDF  TXT</p>
                     <p className={`text-xs ${textMuted} my-2`}>{tx.orTxt}</p>
                     {/* Paste text — same color as Input Material label */}
-                    <button onClick={e=>{e.stopPropagation();setPasteOpen(true);}}
-                      className="text-xs text-[#7c3aed] font-['Plus_Jakarta_Sans',sans-serif] font-semibold hover:underline">{tx.pasteTxt}</button>
-                  </div>
-                </div>
+                   <button onClick={e=>{e.stopPropagation();setPasteOpen(true);}}
+                     className="text-xs text-[#7c3aed] font-['Plus_Jakarta_Sans',sans-serif] font-semibold hover:underline">{tx.pasteTxt}</button>
+                 </div>
+               </div>
+
+               {/* Translate button */}
+               <motion.button
+                 onClick={handleTranslate}
+                 disabled={isTranslating || isUploading || (!extractedText && !pastedText)}
+                 whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.96 }}
+                 className="w-full py-3 rounded-2xl font-['Fredoka',sans-serif] font-bold text-base text-white shadow-lg transition"
+                 style={{ background: (isTranslating || isUploading || (!extractedText && !pastedText)) ? "#c4b5fd" : "linear-gradient(135deg,#bf8ffd 0%,#a855f7 100%)" }}>
+                 {isTranslating ? "Translating..." : isUploading ? "Uploading..." : "Translate"}
+               </motion.button>
+               {translateError && (
+                 <p className="text-xs text-red-500 text-center font-['Poppins',sans-serif]">{translateError}</p>
+               )}
 
                 {/* Context params */}
                 <div className="rounded-2xl p-5 shadow-sm border border-[#e9d5ff]"
@@ -854,12 +1002,25 @@ function TranslatorPage({ nav, lang, setLang, isDark, onToggleDark, onSaveDraft 
                 <div className={`px-6 pt-5 pb-2 text-center shrink-0 border-b ${isDark?"border-gray-700":"border-[#f1f5f9]"}`}>
                   <span className={`font-['Plus_Jakarta_Sans',sans-serif] font-bold text-sm tracking-wide ${textMuted}`}>{tx.translatedMat}</span>
                 </div>
-                <div className="flex-1 flex flex-col items-center justify-center px-8 min-h-0">
-                  <motion.img src={baoPng} alt="Bao"
-                    animate={{ y:[0,-8,0] }} transition={{ duration:3.5, repeat:Infinity, ease:"easeInOut" }}
-                    style={{ height:"clamp(120px,24vh,210px)", width:"auto" }}/>
-                  <p className={`font-['Plus_Jakarta_Sans',sans-serif] font-bold text-xl mt-4 ${textMain}`}>{tx.waitingIdeas}</p>
-                  <p className={`text-sm mt-1 text-center ${textMuted}`}>{tx.uploadStart}</p>
+                <div className="flex-1 flex flex-col items-center justify-center px-8 min-h-0 overflow-auto">
+                  {isTranslating ? (
+                    <div className="flex flex-col items-center gap-4">
+                      <div className="w-12 h-12 rounded-full border-4 border-[#bf8ffd] border-t-transparent animate-spin"/>
+                      <p className={`font-['Plus_Jakarta_Sans',sans-serif] font-bold text-base ${textMain}`}>Translating your lesson…</p>
+                    </div>
+                  ) : translatedText ? (
+                    <div className={`w-full h-full p-6 font-['Plus_Jakarta_Sans',sans-serif] text-sm leading-8 whitespace-pre-wrap ${textMain}`}>
+                      {translatedText}
+                    </div>
+                  ) : (
+                    <>
+                      <motion.img src={baoPng} alt="Bao"
+                        animate={{ y:[0,-8,0] }} transition={{ duration:3.5, repeat:Infinity, ease:"easeInOut" }}
+                        style={{ height:"clamp(120px,24vh,210px)", width:"auto" }}/>
+                      <p className={`font-['Plus_Jakarta_Sans',sans-serif] font-bold text-xl mt-4 ${textMain}`}>{tx.waitingIdeas}</p>
+                      <p className={`text-sm mt-1 text-center ${textMuted}`}>{tx.uploadStart}</p>
+                    </>
+                  )}
                 </div>
                 {/* Action buttons inside right panel */}
                 <div className={`px-6 pb-5 pt-3 border-t ${isDark?"border-gray-700":"border-[#f1f5f9]"} shrink-0`}>
@@ -882,13 +1043,19 @@ function TranslatorPage({ nav, lang, setLang, isDark, onToggleDark, onSaveDraft 
                       </motion.button>
                     </div>
                     <div className="flex items-center gap-2">
-                      <motion.button whileHover={{scale:1.05}} whileTap={{scale:0.9}} onClick={()=>setPrintOpen(true)}
-                        className="px-3 py-1.5 text-xs font-semibold text-[#2d8653] bg-[#f0fdf4] border border-[#a8e15e] rounded-xl flex items-center gap-1.5">
+                      <motion.button
+                        whileHover={{scale: translatedText ? 1.05 : 1}} whileTap={{scale: translatedText ? 0.9 : 1}}
+                        onClick={()=>{ if(translatedText) setPrintOpen(true); }}
+                        disabled={!translatedText}
+                        className={`px-3 py-1.5 text-xs font-semibold rounded-xl flex items-center gap-1.5 border transition ${translatedText ? "text-[#2d8653] bg-[#f0fdf4] border-[#a8e15e]" : "opacity-40 cursor-not-allowed bg-gray-100 border-gray-200 text-gray-400"}`}>
                         <Printer size={12}/> {tx.readyPrint}
                       </motion.button>
-                      <motion.button whileHover={{scale:1.05,boxShadow:"0 8px 24px rgba(191,143,253,0.5)"}} whileTap={{scale:0.9}}
-                        onClick={()=>setTransMode("proofread")}
-                        className="px-3 py-1.5 text-xs font-bold text-white bg-gradient-to-r from-[#bf8ffd] to-[#a855f7] rounded-xl shadow flex items-center gap-1.5">
+                      <motion.button
+                        whileHover={{scale: translatedText ? 1.05 : 1, boxShadow: translatedText ? "0 8px 24px rgba(191,143,253,0.5)" : "none"}}
+                        whileTap={{scale: translatedText ? 0.9 : 1}}
+                        onClick={()=>{ if(translatedText) setTransMode("proofread"); }}
+                        disabled={!translatedText}
+                        className={`px-3 py-1.5 text-xs font-bold text-white rounded-xl shadow flex items-center gap-1.5 transition ${translatedText ? "bg-gradient-to-r from-[#bf8ffd] to-[#a855f7]" : "opacity-40 cursor-not-allowed bg-gray-300"}`}>
                         <Pencil size={12}/> {tx.proofread}
                       </motion.button>
                     </div>
@@ -902,26 +1069,121 @@ function TranslatorPage({ nav, lang, setLang, isDark, onToggleDark, onSaveDraft 
               initial={{ opacity:0, x:40 }} animate={{ opacity:1, x:0 }} exit={{ opacity:0, x:40 }}
               transition={{ type:"spring", stiffness:300, damping:28 }}
               className="flex flex-col flex-1 min-h-0">
-              <div className="flex items-center gap-3 mb-4 shrink-0">
-                <motion.button whileHover={{scale:1.05}} whileTap={{scale:0.95}} onClick={()=>setTransMode("translate")}
-                  className={`p-2 rounded-xl border text-xs font-semibold flex items-center gap-1.5 ${isDark?"bg-gray-800 border-gray-700 text-gray-300":"bg-white border-[#e2e8f0] text-[#64748b]"}`}>
-                  <ArrowLeft size={13}/> {tx.back}
-                </motion.button>
-                <h2 className={`font-['Plus_Jakarta_Sans',sans-serif] font-bold text-lg ${textMain}`}>{tx.proofTitle}</h2>
-              </div>
-              <div className={`flex-1 ${cardBg} rounded-2xl shadow-sm p-7 overflow-auto min-h-0`}>
-                <p className={`text-xs italic mb-4 ${textMuted}`}>Manual proofreading mode — click highlighted phrases to review. Corrections are optional.</p>
-                <div className={`font-['Plus_Jakarta_Sans',sans-serif] text-sm leading-8 space-y-5 ${textMain}`}>
-                  <p>Ti <motion.span whileHover={{backgroundColor:"#fce7f3"}} className="bg-pink-100 border-b-2 border-pink-400 px-0.5 rounded-sm cursor-pointer">maysa a polynomial</motion.span>{" "}ket buklen dagiti variables ken coefficients.</p>
-                  <p>Usarentayo ti <motion.span whileHover={{backgroundColor:"#ffedd5"}} className="bg-orange-100 border-b-2 border-orange-400 px-0.5 rounded-sm cursor-pointer">lokal a dialect</motion.span>{" "}tapno nalaklaka a maawatan dagiti ubing. Adda <motion.span whileHover={{backgroundColor:"#f3e8ff"}} className="bg-purple-100 border-b-2 border-purple-400 px-0.5 rounded-sm cursor-pointer">lima a saba</motion.span>{" "}amin.</p>
-                  <p>Nasken met a masigurado a dagiti termino a teknikal ket maibabagay iti lebel ti pannakaawat dagiti ubing.</p>
+              {/* Header */}
+              <div className="flex items-center justify-between mb-4 shrink-0">
+                <div className="flex items-center gap-3">
+                  <motion.button whileHover={{scale:1.05}} whileTap={{scale:0.95}} onClick={()=>setTransMode("translate")}
+                    className={`p-2 rounded-xl border text-xs font-semibold flex items-center gap-1.5 ${isDark?"bg-gray-800 border-gray-700 text-gray-300":"bg-white border-[#e2e8f0] text-[#64748b]"}`}>
+                    <ArrowLeft size={13}/> {tx.back}
+                  </motion.button>
+                  <h2 className={`font-['Plus_Jakarta_Sans',sans-serif] font-bold text-lg ${textMain}`}>{tx.proofTitle}</h2>
                 </div>
+                {suggestions.length > 0 && (
+                  <span className={`text-xs font-semibold ${textMuted}`}>
+                    {addressedCount} of {suggestions.length + addressedCount} addressed &nbsp;
+                    <span className="inline-block w-16 h-1.5 rounded-full bg-gray-200 align-middle">
+                      <span className="block h-full rounded-full bg-[#bf8ffd]"
+                        style={{ width: `${((addressedCount/(suggestions.length+addressedCount))*100)}%` }}/>
+                    </span>
+                  </span>
+                )}
               </div>
+
+              <div className="flex gap-5 flex-1 min-h-0 overflow-hidden">
+                {/* Editable text panel */}
+                <div className={`flex-1 ${cardBg} rounded-2xl shadow-sm p-6 overflow-auto min-h-0`}>
+                  {isProofreading ? (
+                    <div className="flex flex-col items-center justify-center h-full gap-3">
+                      <div className="w-10 h-10 rounded-full border-4 border-[#bf8ffd] border-t-transparent animate-spin"/>
+                      <p className={`text-sm ${textMuted}`}>Analyzing your translation…</p>
+                    </div>
+                  ) : (
+                    <div className={`font-['Plus_Jakarta_Sans',sans-serif] text-sm leading-8 ${textMain} whitespace-pre-wrap`}>
+                      {/* Highlight spans for each suggestion's original text */}
+                      {(() => {
+                        if (suggestions.length === 0) return proofText;
+                        let result = proofText;
+                        const colorMap: Record<string, string> = { critical:"bg-pink-100 border-pink-400", major:"bg-orange-100 border-orange-400", suggestion:"bg-purple-100 border-purple-400" };
+                        const parts: React.ReactNode[] = [];
+                        let remaining = result;
+                        suggestions.forEach((s, i) => {
+                          const idx = remaining.indexOf(s.original);
+                          if (idx === -1) return;
+                          if (idx > 0) parts.push(remaining.slice(0, idx));
+                          parts.push(
+                            <motion.span key={i} className={`${colorMap[s.severity] ?? "bg-purple-100 border-purple-400"} border-b-2 px-0.5 rounded-sm cursor-pointer`}
+                              whileHover={{ scale: 1.02 }} title={s.reason}>
+                              {s.original}
+                            </motion.span>
+                          );
+                          remaining = remaining.slice(idx + s.original.length);
+                        });
+                        if (remaining) parts.push(remaining);
+                        return parts;
+                      })()}
+                    </div>
+                  )}
+                </div>
+
+                {/* Suggestions panel */}
+                {suggestions.length > 0 && (
+                  <div className="w-72 shrink-0 flex flex-col gap-3 overflow-auto">
+                    <p className={`text-[10px] font-extrabold tracking-widest uppercase ${textMuted}`}>Feedback and Suggestions</p>
+                    {suggestions.map((s, i) => {
+                      const colors: Record<string, string> = { critical:"border-pink-400 bg-pink-50", major:"border-orange-400 bg-orange-50", suggestion:"border-purple-400 bg-purple-50" };
+                      const labelColors: Record<string, string> = { critical:"text-pink-600 bg-pink-100", major:"text-orange-600 bg-orange-100", suggestion:"text-purple-600 bg-purple-100" };
+                      return (
+                        <div key={i} className={`rounded-2xl border p-4 ${colors[s.severity] ?? colors.suggestion}`}>
+                          <span className={`text-[10px] font-bold uppercase rounded-full px-2 py-0.5 ${labelColors[s.severity] ?? labelColors.suggestion}`}>{s.severity}</span>
+                          <p className={`text-xs mt-2 leading-5 ${textMuted}`}>{s.reason}</p>
+                          <p className="text-xs mt-1 line-through text-gray-400">{s.original}</p>
+                          <p className="text-xs mt-0.5 text-green-700 font-semibold">{s.corrected}</p>
+                          <div className="flex gap-2 mt-3">
+                            <motion.button whileHover={{scale:1.04}} whileTap={{scale:0.95}}
+                              onClick={() => {
+                                setProofText(t => t.replace(s.original, s.corrected));
+                                setSuggestions(prev => prev.filter((_, j) => j !== i));
+                                setAddressedCount(c => c + 1);
+                              }}
+                              className="flex-1 py-1.5 text-xs font-bold text-white bg-gradient-to-r from-[#bf8ffd] to-[#a855f7] rounded-xl">
+                              Accept
+                            </motion.button>
+                            <motion.button whileHover={{scale:1.04}} whileTap={{scale:0.95}}
+                              onClick={() => { setSuggestions(prev => prev.filter((_, j) => j !== i)); setAddressedCount(c => c + 1); }}
+                              className={`flex-1 py-1.5 text-xs font-semibold border rounded-xl ${isDark?"border-gray-600 text-gray-300":"border-[#e2e8f0] text-[#64748b]"}`}>
+                              Keep
+                            </motion.button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
               <div className="flex items-center justify-end gap-3 mt-3 shrink-0">
-                <motion.button whileHover={{scale:1.04}} whileTap={{scale:0.95}} onClick={()=>{handleSaveDraft();nav("library");}}
-                  className="px-5 py-2.5 text-sm font-bold text-white bg-gradient-to-r from-[#bf8ffd] to-[#a855f7] rounded-xl shadow">{tx.saveDraft}</motion.button>
+                {suggestions.length > 0 && (
+                  <motion.button whileHover={{scale:1.04}} whileTap={{scale:0.95}}
+                    onClick={() => {
+                      let t = proofText;
+                      suggestions.forEach(s => { t = t.replace(s.original, s.corrected); });
+                      setProofText(t);
+                      setAddressedCount(c => c + suggestions.length);
+                      setSuggestions([]);
+                    }}
+                    className="px-5 py-2.5 text-sm font-bold text-white bg-gradient-to-r from-[#2ec2fd] to-[#0091fa] rounded-xl shadow">
+                    Apply All Corrections
+                  </motion.button>
+                )}
+                <motion.button whileHover={{scale:1.04}} whileTap={{scale:0.95}}
+                  onClick={async ()=>{ await handleSaveDraft(); nav("library"); }}
+                  className="px-5 py-2.5 text-sm font-bold text-white bg-gradient-to-r from-[#bf8ffd] to-[#a855f7] rounded-xl shadow">
+                  {tx.saveDraft}
+                </motion.button>
                 <motion.button whileHover={{scale:1.04}} whileTap={{scale:0.95}} onClick={()=>setPrintOpen(true)}
-                  className="px-5 py-2.5 text-sm font-bold text-white bg-gradient-to-r from-[#2ec2fd] to-[#0091fa] rounded-xl shadow flex items-center gap-2"><Printer size={14}/> {tx.applyAll}</motion.button>
+                  className="px-5 py-2.5 text-sm font-bold text-white bg-gradient-to-r from-[#2ec2fd] to-[#0091fa] rounded-xl shadow flex items-center gap-2">
+                  <Printer size={14}/> {tx.applyAll}
+                </motion.button>
               </div>
             </motion.div>
           )}
@@ -983,6 +1245,7 @@ function AssistantPage({ lang, setLang, isDark, onToggleDark, allLibCards }:{
   const [learningStyles, setLearningStyles] = useState<string[]>(["Visual","Kinesthetic"]);
   const [showPicker, setShowPicker] = useState(false);
   const [selId, setSelId] = useState<string|null>(null);
+  const [isChatLoading, setIsChatLoading] = useState(false);
   const toggleStyle = (s:string)=>setLearningStyles(p=>p.includes(s)?p.filter(x=>x!==s):[...p,s]);
   const selCard = allLibCards.find(c=>c.id===selId);
   const chatEndRef = useRef<HTMLDivElement>(null);
@@ -990,37 +1253,63 @@ function AssistantPage({ lang, setLang, isDark, onToggleDark, allLibCards }:{
   const scrollToBottom = () => chatEndRef.current?.scrollIntoView({ behavior:"smooth" });
   useEffect(()=>{ scrollToBottom(); },[messages]);
 
-  /* Functional quick actions */
-  const quickActionResponses: Record<string,string> = {
-    [tx.lpLabel]: en
-      ? "Here's a 45-minute lesson plan for Grade 3 Science:\n\n**Objective:** Students will identify the parts of a plant.\n\n**00-10m** Motivation: Show a real plant and ask students what they see.\n**10-25m** Lesson Proper: Discuss roots, stem, leaves, flowers using visual aids.\n**25-40m** Activity: Students draw and label plant parts in their dialect.\n**40-45m** Evaluation: 5-item matching quiz."
-      : "Narito ang 45-minutong plano ng aralin para sa Grade 3 Agham:\n\n**Layunin:** Matukoy ng mga mag-aaral ang mga bahagi ng halaman.\n\n**00-10m** Motibasyon: Ipakita ang tunay na halaman.\n**10-25m** Talakayan: Ugat, tangkay, dahon gamit ang visual aids.\n**25-40m** Gawain: Gumuhit at mag-label sa kanilang diyalekto.\n**40-45m** Pagtatasa: 5-item na pagtatampok.",
-    [tx.actLabel]: en
-      ? "**Plant Parts Group Activity** 🌱\n\n**Materials:** Printed diagrams, colored pencils, reference book\n\n**Instructions:**\n1. Divide class into groups of 4.\n2. Each group receives a blank plant diagram.\n3. Label all parts in your local dialect.\n4. Present to the class with a function explanation.\n\n**Duration:** 20 minutes\n**Assessment:** Completeness (40%), Creativity (30%), Presentation (30%)"
-      : "**Pangkatang Gawain sa Mga Bahagi ng Halaman** 🌱\n\n**Kagamitan:** Naka-print na diagram, kulay na lapis\n\n**Tagubilin:**\n1. Hatiin ang klase sa grupo ng 4.\n2. Bawat grupo ay makatanggap ng blangkong diagram.\n3. Lagyan ng label sa lokal na wika.\n4. Ipresenta sa klase.\n\n**Tagal:** 20 minuto",
-    [tx.sumLabel]: en
-      ? "**Lesson Summary: Plant Parts** 📋\n\nA plant has four main parts:\n• **Roots** – Absorb water and nutrients from soil\n• **Stem** – Supports the plant and transports water\n• **Leaves** – Make food through photosynthesis\n• **Flowers** – Reproductive organs of the plant\n\nKey vocabulary in Waray: Gamot (roots), Tangkay (stem), Dahon (leaves), Bulaklak (flowers)."
-      : "**Buod ng Aralin: Mga Bahagi ng Halaman** 📋\n\nAng halaman ay may apat na pangunahing bahagi:\n• **Ugat** – Sumipsip ng tubig at sustansya\n• **Tangkay** – Sumuporta at nagdadala ng tubig\n• **Dahon** – Gumagawa ng pagkain\n• **Bulaklak** – Bahagi ng reproduksiyon",
-    [tx.moreLabel]: en
-      ? "Here are more things I can help you with:\n\n📝 **Worksheet Generator** – Create fill-in-the-blank exercises\n🎯 **Quiz Maker** – Multiple choice, true/false, matching\n🗣️ **Dialect Glossary** – Key terms in local dialects\n📊 **Progress Tracker** – Monitor student learning\n\nJust tell me which one you'd like!"
-      : "Narito ang iba pang maaari kong tulungan:\n\n📝 **Worksheet Generator** – Lumikha ng mga gawain\n🎯 **Quiz Maker** – Multiple choice, true/false\n🗣️ **Talasalitaan sa Diyalekto** – Mga pangunahing termino\n\nSabihin mo lang kung alin ang gusto mo!",
-  };
+  /* Core send — calls Bao API */
+  const sendMessage = useCallback(async (text: string) => {
+    if (!text.trim() || isChatLoading) return;
+    const userMsg: ChatMsg = { id: Date.now()+"u", type:"user", content: text };
+    const typingMsg: ChatMsg = { id: "typing", type:"bot", content: (
+      <div className="flex gap-1 items-center py-1">
+        {[0,1,2].map(i=>(
+          <motion.div key={i} className="w-2 h-2 rounded-full bg-[#bf8ffd]"
+            animate={{ y:[0,-5,0] }} transition={{ duration:0.6, repeat:Infinity, delay:i*0.15 }}/>
+        ))}
+      </div>
+    )};
+    setMessages(prev => [...prev, userMsg, typingMsg]);
+    setIsChatLoading(true);
+    try {
+      const { apiClient } = await import("../lib/api");
+      const res = await apiClient.post<{ content: string }>("/chat", {
+        message: text,
+        output_language: outputLang,
+        grade_level: gradeLevel,
+        learning_style: learningStyles.join(" + "),
+        file_context: selCard ? selCard.name : null,
+      });
+      const botMsg: ChatMsg = { id: Date.now()+"b", type:"bot", content: (
+        <div className="whitespace-pre-wrap text-sm leading-relaxed">{parseBold(res.content)}</div>
+      )};
+      setMessages(prev => prev.filter(m => m.id !== "typing").concat(botMsg));
+    } catch (e: unknown) {
+      const errMsg: ChatMsg = { id: Date.now()+"e", type:"bot", content: (
+        <span className="text-red-400 text-xs">{e instanceof Error ? e.message : "Something went wrong. Try again."}</span>
+      )};
+      setMessages(prev => prev.filter(m => m.id !== "typing").concat(errMsg));
+    } finally {
+      setIsChatLoading(false);
+    }
+  }, [isChatLoading, outputLang, gradeLevel, learningStyles, selCard]);
 
   const handleQuickAction = (label: string) => {
-    const userMsg: ChatMsg = { id: Date.now()+"u", type:"user", content: `${label}` };
-    const botMsg: ChatMsg = { id: Date.now()+"b", type:"bot", content: (
-      <div className="whitespace-pre-wrap text-sm leading-relaxed">{parseBold(quickActionResponses[label] || `Generating ${label}...`)}</div>
-    )};
-    setMessages(prev=>[...prev, userMsg, botMsg]);
+    const promptMap: Record<string, string> = {
+      [tx.lpLabel]: en
+        ? `Create a 45-minute lesson plan for ${gradeLevel} using ${outputLang}.`
+        : `Gumawa ng 45-minutong plano ng aralin para sa ${gradeLevel} sa ${outputLang}.`,
+      [tx.actLabel]: en
+        ? `Create a group activity for ${gradeLevel} students in ${outputLang}.`
+        : `Gumawa ng pangkatang gawain para sa ${gradeLevel} sa ${outputLang}.`,
+      [tx.sumLabel]: en
+        ? `Summarize the selected lesson for ${gradeLevel} in ${outputLang}.`
+        : `Ibuod ang napiling aralin para sa ${gradeLevel} sa ${outputLang}.`,
+      [tx.moreLabel]: en
+        ? "What other tools can you help me with?"
+        : "Ano pa ang maaari mong tulungan sa akin?",
+    };
+    sendMessage(promptMap[label] ?? label);
   };
 
   const handleSend = () => {
-    if (!message.trim()) return;
-    const userMsg: ChatMsg = { id: Date.now()+"u", type:"user", content: message };
-    const botReply: ChatMsg = { id: Date.now()+"b", type:"bot", content: en
-      ? `Thanks for your message! I'm processing your request about "${message}". Let me generate a tailored response for your Grade ${gradeLevel} class in ${outputLang}...`
-      : `Salamat sa iyong mensahe! Pinoproseso ko ang iyong kahilingan tungkol sa "${message}". Gagawa ako ng naaangkop na sagot para sa iyong Grade ${gradeLevel} klase sa ${outputLang}...` };
-    setMessages(prev=>[...prev, userMsg, botReply]);
+    sendMessage(message);
     setMessage("");
   };
 
@@ -1190,12 +1479,16 @@ function AssistantPage({ lang, setLang, isDark, onToggleDark, allLibCards }:{
             <div className={`flex items-center gap-3 border rounded-2xl px-4 py-3 ${isDark?"bg-gray-700 border-gray-600":"bg-[#f8fafc] border-[#e2e8f0]"}`}>
               <input value={message} onChange={e=>setMessage(e.target.value)}
                 onKeyDown={e=>e.key==="Enter"&&!e.shiftKey&&handleSend()}
-                placeholder={tx.typeMsg}
+                disabled={isChatLoading}
+                placeholder={isChatLoading ? "Bao is typing…" : tx.typeMsg}
                 className={`flex-1 bg-transparent text-sm placeholder-[#94a3b8] outline-none font-['Poppins',sans-serif] ${textMain}`}/>
-              <motion.button whileHover={{scale:1.12,boxShadow:"0 6px 20px rgba(46,194,253,0.5)"}} whileTap={{scale:0.88}}
+              <motion.button
+                whileHover={{scale: isChatLoading ? 1 : 1.12, boxShadow: isChatLoading ? "none" : "0 6px 20px rgba(46,194,253,0.5)"}}
+                whileTap={{scale: isChatLoading ? 1 : 0.88}}
                 onClick={handleSend}
-                className="w-9 h-9 rounded-xl bg-gradient-to-br from-[#2ec2fd] to-[#0091fa] flex items-center justify-center shrink-0 shadow-md">
-                <Send size={14} className="text-white"/>
+                disabled={isChatLoading}
+                className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 shadow-md transition ${isChatLoading ? "bg-gray-200 cursor-not-allowed" : "bg-gradient-to-br from-[#2ec2fd] to-[#0091fa]"}`}>
+                <Send size={14} className={isChatLoading ? "text-gray-400" : "text-white"}/>
               </motion.button>
             </div>
           </div>
@@ -1208,11 +1501,33 @@ function AssistantPage({ lang, setLang, isDark, onToggleDark, allLibCards }:{
 /* ─────────────────────────────────────────────────────
    Screen F — Library
 ───────────────────────────────────────────────────── */
-function LibraryPage({ lang, setLang, isDark, onToggleDark, draftFiles }:{
+function LibraryPage({ lang, setLang, isDark, onToggleDark, draftFiles, onOpenTranslator }:{
   lang:Lang; setLang:(l:Lang)=>void; isDark:boolean; onToggleDark:()=>void; draftFiles:DraftFile[];
+  onOpenTranslator:(item:{ doc_id:string; translated_text:string; mode?:TransMode })=>void;
 }) {
   const tx = T[lang];
   type S = "complete"|"processing"|"review"|"error"|"draft"|"schedule";
+
+  // ── API library items ────────────────────────────────────────────────────────
+  interface ApiItem { doc_id:string; title:string; category:string; grade:string; subtitle:string; status:string; translated_text:string; created_at:string; }
+  const [apiItems, setApiItems] = useState<ApiItem[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(()=>{
+    import("../lib/api").then(({ apiClient })=>
+      apiClient.get<ApiItem[]>("/library")
+        .then(items => setApiItems(items))
+        .catch(()=>{/* fall back to base cards */})
+        .finally(()=>setIsLoading(false))
+    );
+  },[]);
+
+  const handleDelete = async (doc_id: string) => {
+    const { apiClient } = await import("../lib/api");
+    await apiClient.delete(`/library/${doc_id}`).catch(()=>{});
+    setApiItems(prev => prev.filter(i => i.doc_id !== doc_id));
+  };
+
   const statusMap: Record<S,{lbl:string;cls:string;actLbl:string;actCls:string}> = {
     complete:   {lbl:tx.complete,    cls:"bg-emerald-100 text-emerald-700", actLbl:tx.view,    actCls:"bg-[#2ec2fd] text-white"},
     processing: {lbl:tx.processing,  cls:"bg-amber-100 text-amber-700",     actLbl:tx.track,   actCls:"bg-[#ffb425] text-white"},
@@ -1222,8 +1537,12 @@ function LibraryPage({ lang, setLang, isDark, onToggleDark, draftFiles }:{
     schedule:   {lbl:tx.schedule,    cls:"bg-amber-100 text-amber-700",     actLbl:tx.schedule,actCls:"bg-[#ffb425] text-white"},
   };
   const outerTint = (cat:string) => cat==="MATHEMATICS"||cat==="ENGLISH"?{bg:"#e0f7ff",border:"#bae6fd"}:cat==="SCIENCE"||cat==="FILIPINO"?{bg:"#f3e8ff",border:"#d8b4fe"}:{bg:"#ffe4f0",border:"#fbcfe8"};
-  const draftCards = draftFiles.map(d=>({id:d.id,category:d.category,title:d.grade,subtitle:d.subtitle,status:"draft" as S,name:d.name,date:d.date}));
-  const allCards = [...draftCards,...BASE_CARDS.map(c=>({...c,status:c.status as S}))];
+  const draftCards = draftFiles.map(d=>({doc_id:d.id,category:d.category,title:d.grade,subtitle:d.subtitle,status:"draft",name:d.name,date:d.date,translated_text:""}));
+
+  // Merge: API items first, then local drafts not already in API results, then BASE_CARDS as fallback if nothing loaded
+  const merged = apiItems.length > 0
+    ? [...apiItems.map(a=>({doc_id:a.doc_id,category:a.category,title:a.grade,subtitle:a.subtitle,status:a.status,name:a.title,date:a.created_at.slice(0,10),translated_text:a.translated_text})),...draftCards.filter(d=>!apiItems.find(a=>a.doc_id===d.doc_id))]
+    : isLoading ? [] : [...draftCards, ...BASE_CARDS.map(c=>({doc_id:c.id,category:c.category,title:c.title,subtitle:c.subtitle,status:c.status,name:c.name,date:c.date,translated_text:""}))];
 
   return (
     <div className="flex flex-col flex-1 min-h-0 overflow-auto">
@@ -1232,41 +1551,61 @@ function LibraryPage({ lang, setLang, isDark, onToggleDark, draftFiles }:{
         className={`font-['Montserrat',sans-serif] font-bold text-2xl mb-4 shrink-0 ${isDark?"text-white":"text-[#1e293b]"}`}>
         {tx.myLib}
       </motion.h2>
-      <div className="grid grid-cols-3 gap-4 pb-6">
-        {allCards.map((card,i)=>{
-          const s = statusMap[card.status];
-          const tint = outerTint(card.category);
-          const baseCard = BASE_CARDS.find(b=>b.id===card.id);
-          return (
-            <motion.div key={card.id}
-              initial={{ opacity:0, y:20, scale:0.95 }}
-              animate={{ opacity:1, y:0, scale:1 }}
-              transition={{ duration:0.4, delay:i*0.07, ease:[0.16,1,0.3,1] }}
-              whileHover={{ y:-5, scale:1.016, boxShadow:`0 20px 40px ${tint.bg}` }}
-              whileTap={{ scale:0.97 }}
-              className={`rounded-[28px] p-3 border ${isDark?"bg-gray-800 border-gray-700":""}`}
-              style={isDark?{}:{ background:tint.bg, borderColor:tint.border }}>
-              <div className={`rounded-[20px] p-4 mb-3 shadow-sm ${isDark?"bg-gray-700":"bg-white"}`}>
-                <span className="text-[10px] font-['Poppins',sans-serif] font-bold uppercase tracking-widest"
-                  style={{ color:card.status==="draft"?"#bf8ffd":(baseCard?.catColor??"#2ec2fd") }}>
-                  {card.category}
-                </span>
-                <h3 className={`font-['Nunito',sans-serif] font-black text-base mt-0.5 leading-snug ${isDark?"text-white":"text-[#1e293b]"}`}>{card.title}</h3>
-                <p className={`text-[11px] mt-1 leading-relaxed ${isDark?"text-gray-400":"text-[#94a3b8]"}`}>{card.subtitle}</p>
-                <div className="flex items-center gap-2 mt-3">
-                  <span className={`text-[10px] font-bold px-2 py-1 rounded-lg uppercase ${s.cls}`}>{s.lbl}</span>
-                  <motion.button whileHover={{scale:1.06}} whileTap={{scale:0.92}}
-                    className={`text-[10px] font-bold px-2.5 py-1 rounded-lg uppercase hover:opacity-80 transition ${s.actCls}`}>{s.actLbl}</motion.button>
+
+      {isLoading ? (
+        <div className="grid grid-cols-3 gap-4 pb-6">
+          {[1,2,3,4,5,6].map(i=>(
+            <div key={i} className={`rounded-[28px] p-3 border animate-pulse h-48 ${isDark?"bg-gray-800 border-gray-700":"bg-[#f1f5f9] border-[#e2e8f0]"}`}/>
+          ))}
+        </div>
+      ) : (
+        <div className="grid grid-cols-3 gap-4 pb-6">
+          {merged.map((card,i)=>{
+            const rawStatus = (card.status ?? "draft") as S;
+            const s = statusMap[rawStatus] ?? statusMap.draft;
+            const tint = outerTint(card.category);
+            return (
+              <motion.div key={card.doc_id}
+                initial={{ opacity:0, y:20, scale:0.95 }}
+                animate={{ opacity:1, y:0, scale:1 }}
+                transition={{ duration:0.4, delay:i*0.07, ease:[0.16,1,0.3,1] }}
+                whileHover={{ y:-5, scale:1.016, boxShadow:`0 20px 40px ${tint.bg}` }}
+                whileTap={{ scale:0.97 }}
+                className={`rounded-[28px] p-3 border ${isDark?"bg-gray-800 border-gray-700":""}`}
+                style={isDark?{}:{ background:tint.bg, borderColor:tint.border }}>
+                <div className={`rounded-[20px] p-4 mb-3 shadow-sm ${isDark?"bg-gray-700":"bg-white"}`}>
+                  <span className="text-[10px] font-['Poppins',sans-serif] font-bold uppercase tracking-widest text-[#2ec2fd]">
+                    {card.category}
+                  </span>
+                  <h3 className={`font-['Nunito',sans-serif] font-black text-base mt-0.5 leading-snug ${isDark?"text-white":"text-[#1e293b]"}`}>{card.title}</h3>
+                  <p className={`text-[11px] mt-1 leading-relaxed ${isDark?"text-gray-400":"text-[#94a3b8]"}`}>{card.subtitle}</p>
+                  <div className="flex items-center gap-2 mt-3">
+                    <span className={`text-[10px] font-bold px-2 py-1 rounded-lg uppercase ${s.cls}`}>{s.lbl}</span>
+                    <motion.button whileHover={{scale:1.06}} whileTap={{scale:0.92}}
+                      onClick={()=>{
+                        if (rawStatus==="complete" || rawStatus==="draft") onOpenTranslator({ doc_id:card.doc_id, translated_text:card.translated_text });
+                        if (rawStatus==="review") onOpenTranslator({ doc_id:card.doc_id, translated_text:card.translated_text, mode:"proofread" });
+                      }}
+                      className={`text-[10px] font-bold px-2.5 py-1 rounded-lg uppercase hover:opacity-80 transition ${s.actCls}`}>{s.actLbl}</motion.button>
+                    {/* Delete button for API items */}
+                    {apiItems.find(a=>a.doc_id===card.doc_id) && (
+                      <motion.button whileHover={{scale:1.1}} whileTap={{scale:0.9}}
+                        onClick={()=>handleDelete(card.doc_id)}
+                        className="ml-auto p-1 rounded-lg text-gray-400 hover:text-red-400 transition">
+                        <X size={12}/>
+                      </motion.button>
+                    )}
+                  </div>
                 </div>
-              </div>
-              <div className="px-1">
-                <p className={`font-['Poppins',sans-serif] font-semibold text-xs ${isDark?"text-white":"text-[#1e293b]"}`}>{card.name}</p>
-                <p className={`text-[10px] mt-0.5 ${isDark?"text-gray-500":"text-[#64748b]"}`}>{card.date}</p>
-              </div>
-            </motion.div>
-          );
-        })}
-      </div>
+                <div className="px-1">
+                  <p className={`font-['Poppins',sans-serif] font-semibold text-xs ${isDark?"text-white":"text-[#1e293b]"}`}>{card.name}</p>
+                  <p className={`text-[10px] mt-0.5 ${isDark?"text-gray-500":"text-[#64748b]"}`}>{card.date}</p>
+                </div>
+              </motion.div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
@@ -1280,18 +1619,45 @@ export default function App() {
   const [isDark, setIsDark] = useState(false);
   const [draftFiles, setDraftFiles] = useState<DraftFile[]>([]);
   const [userName, setUserName] = useState("User");
+  const [authReady, setAuthReady] = useState(false);
+  const [translatorPreload, setTranslatorPreload] = useState<{ doc_id: string; translated_text: string; mode?: TransMode } | undefined>();
 
+  // ── Dark mode ──────────────────────────────────────────────────────────────
   useEffect(() => {
     document.documentElement.classList.toggle("dark", isDark);
     document.documentElement.style.colorScheme = isDark ? "dark" : "light";
   }, [isDark]);
 
-  const handleLogin = (name: string) => { setUserName(name||"User"); setView("home"); };
+  // ── Firebase Auth observer ─────────────────────────────────────────────────
+  useEffect(() => {
+    const unsub = onAuthStateChanged(auth, (user: FirebaseUser | null) => {
+      if (user) {
+        setUserName(user.displayName || user.email || "User");
+        setView("home");
+      } else {
+        setView("login");
+      }
+      setAuthReady(true);
+    });
+    return unsub;
+  }, []);
+
+  const handleLogin = (name: string) => { setUserName(name || "User"); setView("home"); };
   const handleSaveDraft = (f: DraftFile) => {
     setDraftFiles(prev => prev.find(p=>p.id===f.id) ? prev : [f,...prev]);
     setView("library");
   };
   const allLibCards = [...draftFiles.map(d=>({id:d.id,name:d.name,category:d.category})),...BASE_CARDS.map(c=>({id:c.id,name:c.name,category:c.category}))];
+
+  // ── Waiting for auth state resolution ─────────────────────────────────────
+  if (!authReady) {
+    return (
+      <div className="flex h-screen w-screen items-center justify-center"
+        style={{ background: "linear-gradient(180deg,#b0dcff 0%,#cce8ff 50%,#f0f7ff 100%)" }}>
+        <div className="w-10 h-10 rounded-full border-4 border-[#2ec2fd] border-t-transparent animate-spin"/>
+      </div>
+    );
+  }
 
   if (view==="login") return <LoginPage onLogin={handleLogin} lang={lang}/>;
 
@@ -1301,7 +1667,7 @@ export default function App() {
   return (
     <div className="flex h-screen w-screen overflow-hidden p-4 gap-4 transition-colors duration-300"
       style={{ background:isDark?"linear-gradient(135deg,#0a0e1a 0%,#0f1729 50%,#0a0e1a 100%)":"linear-gradient(234deg,rgba(197,179,250,.09) 17%,rgba(43,30,255,.09) 42%,rgba(239,56,171,.09) 78%,rgba(255,210,247,.09) 99%),linear-gradient(90deg,#f9fbff 0%,#f9fbff 100%)" }}>
-      <Sidebar active={view} nav={setView} isDark={isDark}/>
+      <Sidebar active={view} nav={setView} isDark={isDark} onLogout={() => signOut(auth)}/>
 
       {/* Outer column — header is STATIC (never re-mounts between pages) */}
       <div className="flex-1 min-w-0 flex flex-col overflow-hidden gap-0">
@@ -1317,9 +1683,9 @@ export default function App() {
             transition={{ duration:0.2, ease:"easeInOut" }}
             className="flex-1 min-w-0 flex flex-col overflow-hidden">
             {view==="home"       && <HomePage      {...sharedProps} nav={setView} userName={userName}/>}
-            {view==="translator" && <TranslatorPage {...sharedProps} nav={setView} onSaveDraft={handleSaveDraft}/>}
+            {view==="translator" && <TranslatorPage {...sharedProps} nav={setView} onSaveDraft={handleSaveDraft} preloadItem={translatorPreload}/>}
             {view==="assistant"  && <AssistantPage  {...sharedProps} allLibCards={allLibCards}/>}
-            {view==="library"    && <LibraryPage    {...sharedProps} draftFiles={draftFiles}/>}
+            {view==="library"    && <LibraryPage    {...sharedProps} draftFiles={draftFiles} onOpenTranslator={(item)=>{ setTranslatorPreload(item); setView("translator"); }}/>}
           </motion.main>
         </AnimatePresence>
 

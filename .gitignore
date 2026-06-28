@@ -49,3 +49,5 @@ temp/
 .pnpm-store/
 .npm/
 .yarn/
+
+serviceAccountKey.json
