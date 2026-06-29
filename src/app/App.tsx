@@ -1,0 +1,1877 @@
+import { useState, useRef, useEffect, useCallback } from "react";
+import { motion, AnimatePresence } from "motion/react";
+import {
+  Settings, Upload, ChevronDown, Send, Check, Pencil,
+  FileDown, Printer, Clock, Zap, Plus, X, ArrowLeft,
+  Sun, Moon, FileText, BookOpen, User,
+  Shield, Bell, Sliders, Palette, HelpCircle, Lock, Trash2, Globe, Book, Mail, AlertTriangle, Save, MessageSquare,
+} from "lucide-react";
+import undesignPng from "@/imports/Untitled_design-1.png";
+import cowHead1Png from "@/imports/cow_head-1.PNG";
+import baoPng from "@/imports/UserSignIn/3ad67dde473c9389281e28bf3bc5900a4fa1dd13.png";
+import homeIconPng from "@/imports/home.png";
+import translateIconPng from "@/imports/translate.png";
+import filesIconPng from "@/imports/files.png";
+
+/* ─────────────────────────────────────────────────────
+   Types
+───────────────────────────────────────────────────── */
+type View = "login" | "home" | "translator" | "assistant" | "library" | "settings";
+type Lang = "en" | "tl";
+type TransMode = "translate" | "proofread";
+
+interface DraftFile {
+  id: string; name: string; category: string;
+  grade: string; subtitle: string; date: string;
+}
+interface ChatMsg { id: string; type: "user" | "bot"; content: string | React.ReactNode }
+
+/* ─────────────────────────────────────────────────────
+   Translations
+───────────────────────────────────────────────────── */
+const T = {
+  en: {
+    tagline: "AI-Powered Tool for Translating\nLearning Materials into Local Dialect",
+    register: "Register", login: "Login",
+    emailPh: "Email", passPh: "Password", namePh: "Full Name", back: "← Back",
+    subtitle: "AI-Powered Translator for your learning materials",
+    greeting: (n: string) => `Hello, ${n}!`, tools: "Tools",
+    transTitle: "Translator", transDesc: "Convert raw English/Tagalog lessons into localized, context-aware teaching materials.", transCta: "Start Translating",
+    libTitle: "My Library", libDesc: "Access, manage, and download your previously translated localized learning materials.", libCta: "Open My Library",
+    aiTitle: "AI Assistant", aiDesc: "Collaborate with AI to generate custom lesson plans, interactive activities, or worksheets.", aiCta: "Chat with AI",
+    inputMat: "Input Material", inputIn: "INPUT IN", english: "EN", tagalog: "TL",
+    dropLesson: "Drop your learning material here", dropSub: "DOCX  PDF", orTxt: "OR", pasteTxt: "Paste your lesson text instead",
+    translatedMat: "Translated Learning Material", waitingIdeas: "Waiting for your ideas...", uploadStart: "Upload a lesson to start translating!",
+    exportLbl: "EXPORT", readyPrint: "Ready to Print", proofread: "Proofread",
+    ctxParams: "Context Parameters", gradeLevel: "Grade Level", subjectArea: "Subject Area", targetDialect: "Target Dialect",
+    proofTitle: "Proofreading Mode: Mathematics Module 1 (Grade 4)",
+    saveDraft: "Save Draft", applyAll: "Accept & Print",
+    selFile: "Selected File", changeFile: "Change File", selFromLib: "Select from Library", noFiles: "No files yet.",
+    quickActs: "Quick Actions", lpLabel: "Lesson Plan", actLabel: "Activity", sumLabel: "Summarize", moreLabel: "More",
+    outPrefs: "Output Preferences", outLang: "Output Language", duration: "Duration", learnStyle: "Learning Style",
+    typeMsg: "Type your message to Bao...", myLib: "My Library",
+    complete: "COMPLETE", processing: "PROCESSING", needsReview: "NEEDS REVIEW", error: "ERROR", schedule: "SCHEDULE", draft: "DRAFT",
+    view: "VIEW", track: "TRACK", review: "REVIEW", retry: "RETRY", edit: "EDIT",
+    printPreview: "Print Preview", printReadyDesc: "Your translated lesson is formatted and ready for printing.",
+    printNow: "Print Now", close: "Close", fileSize: "1.2 MB · 12 pages",
+    fileDesc: "This document contains lesson content regarding plant biology adapted for local dialects.",
+    pasteTitle: "Paste Your Lesson Text", pasteHint: "Paste your content here...", pasteConfirm: "Use This Text", download: "Download",
+  },
+  tl: {
+    tagline: "AI na Kasangkapan para sa Pagsasalin\nng Mga Kagamitang Panturo sa Lokal na Wika",
+    register: "Magrehistro", login: "Mag-login",
+    emailPh: "Email", passPh: "Password", namePh: "Buong Pangalan", back: "← Bumalik",
+    subtitle: "Tagasalin ng Mga Kagamitang Panturo gamit ang AI",
+    greeting: (n: string) => `Kamusta, ${n}!`, tools: "Mga Kasangkapan",
+    transTitle: "Tagasalin", transDesc: "I-convert ang mga leksyon sa Ingles/Filipino sa lokal na kagamitang panturo.", transCta: "Magsimulang Magsalin",
+    libTitle: "Aking Aklatan", libDesc: "I-access, pamahalaan, at i-download ang iyong mga naisalin na kagamitang panturo.", libCta: "Buksan ang Aklatan",
+    aiTitle: "AI na Katulong", aiDesc: "Makipagtulungan sa AI para gumawa ng mga plano ng aralin, aktibidad, o worksheet.", aiCta: "Makipag-chat sa AI",
+    inputMat: "Input na Materyal", inputIn: "INPUT SA", english: "EN", tagalog: "TL",
+    dropLesson: "I-drop ang iyong materyal dito", dropSub: "DOCX  PDF", orTxt: "O", pasteTxt: "I-paste ang teksto ng aralin",
+    translatedMat: "Isinalin na Kagamitang Panturo", waitingIdeas: "Naghihintay sa iyong mga ideya...", uploadStart: "Mag-upload ng aralin para magsimula!",
+    exportLbl: "I-EXPORT", readyPrint: "Handa sa Pag-print", proofread: "Suriin",
+    ctxParams: "Mga Parametro ng Konteksto", gradeLevel: "Antas", subjectArea: "Asignatura", targetDialect: "Target na Diyalekto",
+    proofTitle: "Mode ng Pagwawasto: Matematika Modyul 1 (Grade 4)",
+    saveDraft: "I-save ang Draft", applyAll: "Tanggapin at I-print",
+    selFile: "Napiling File", changeFile: "Palitan", selFromLib: "Pumili mula sa Aklatan", noFiles: "Wala pang mga file.",
+    quickActs: "Mabilis na Aksyon", lpLabel: "Plano ng Aralin", actLabel: "Aktibidad", sumLabel: "Buodin", moreLabel: "Dagdag",
+    outPrefs: "Mga Kagustuhan sa Output", outLang: "Wika ng Output", duration: "Tagal", learnStyle: "Istilo ng Pagkatuto",
+    typeMsg: "I-type ang iyong mensahe kay Bao...", myLib: "Aking Aklatan",
+    complete: "KUMPLETO", processing: "PINOPROSESO", needsReview: "KAILANGAN NG PAGSUSURI", error: "ERROR", schedule: "ISKEDYUL", draft: "DRAFT",
+    view: "TINGNAN", track: "SUBAYBAYAN", review: "SURIIN", retry: "SUBUKAN ULIT", edit: "I-EDIT",
+    printPreview: "Preview ng Print", printReadyDesc: "Handa na ang iyong isinalin na aralin para i-print.",
+    printNow: "I-print Ngayon", close: "Isara", fileSize: "1.2 MB · 12 pahina",
+    fileDesc: "Naglalaman ito ng nilalaman ng aralin tungkol sa halaman na inangkop para sa lokal na mga diyalekto.",
+    pasteTitle: "I-paste ang Iyong Teksto", pasteHint: "I-paste ang nilalaman dito...", pasteConfirm: "Gamitin Ito", download: "I-download",
+  },
+};
+
+const BASE_CARDS = [
+  { id:"1", category:"MATHEMATICS", catColor:"#2ec2fd", title:"Module 1 (Grade 4)",       subtitle:"Cultural Heritage (English to Ilocano)",        status:"complete"   as const, name:"Mathematics Module 1",  date:"Created on 06/24/26" },
+  { id:"2", category:"SCIENCE",     catColor:"#bf8ffd", title:"Unit 2 (Grade 5)",          subtitle:"Photosynthesis (English to Cebuano)",            status:"processing" as const, name:"Science Unit 2",        date:"Created on 06/13/26" },
+  { id:"3", category:"SOCIAL STUDIES",catColor:"#fe8bd0",title:"ch. 3 (Grade 6)",         subtitle:"Cultural Heritage (English to Hiligaynon)",      status:"review"     as const, name:"Social Studies ch. 3",  date:"Created on 06/24/26" },
+  { id:"4", category:"ENGLISH",     catColor:"#2ec2fd", title:"Reading Comp. (Grade 3)",   subtitle:"The Story of Maria (English to Pangasinense)",  status:"complete"   as const, name:"English Reading",       date:"Created on 06/24/26" },
+  { id:"5", category:"FILIPINO",    catColor:"#bf8ffd", title:"Filipino Wika (Grade 5)",   subtitle:"Pagbasa at Pagsunaw (Filipino to Bicolano)",     status:"processing" as const, name:"Filipino Wika",         date:"Created on 06/24/26" },
+  { id:"6", category:"HISTORY",     catColor:"#fe8bd0", title:"History Overview (Grade 6)", subtitle:"Pre-Colonial Era (English to Waray)",           status:"error"      as const, name:"History Overview",      date:"Created on 06/24/26" },
+];
+
+/* ─────────────────────────────────────────────────────
+   Interactive Pupil — linear cursor-following, no bounce
+   Size is computed from the container (10% of its width).
+   Pupil always moves to full max offset in cursor direction.
+───────────────────────────────────────────────────── */
+function InteractivePupil({
+  mouseX, mouseY, containerRef, eyePctX, eyePctY,
+}: {
+  mouseX: number; mouseY: number;
+  containerRef: React.RefObject<HTMLDivElement | null>;
+  eyePctX: number; eyePctY: number;
+}) {
+  const [pupilOffset, setPupilOffset] = useState({ x: 0, y: 0 });
+  const [size, setSize] = useState(32);
+
+  useEffect(() => {
+    const rect = containerRef.current?.getBoundingClientRect();
+    if (!rect) return;
+
+    /* Pupil size = 10% of container width, min 28px */
+    const s = Math.max(28, rect.width * 0.10);
+    setSize(s);
+
+    const eyeX = rect.left + eyePctX * rect.width;
+    const eyeY = rect.top + eyePctY * rect.height;
+    const dx = mouseX - eyeX;
+    const dy = mouseY - eyeY;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+
+    if (dist < 3) {
+      setPupilOffset({ x: 0, y: 0 });
+      return;
+    }
+
+    /* Always move to full max offset in cursor direction — no capping by distance */
+    const maxOffset = s * 0.38;
+    const angle = Math.atan2(dy, dx);
+    setPupilOffset({
+      x: Math.cos(angle) * maxOffset,
+      y: Math.sin(angle) * maxOffset,
+    });
+  }, [mouseX, mouseY, containerRef, eyePctX, eyePctY]);
+
+  return (
+    /* type:"tween" + linear ease = direct tracking, zero bounce */
+    <motion.div
+      animate={{ x: pupilOffset.x, y: pupilOffset.y }}
+      transition={{ type: "tween", duration: 0.04, ease: "linear" }}
+      style={{ width: size, height: size, borderRadius: "50%", background: "#12100a", position: "relative" }}
+    >
+      {/* Primary reflection spot */}
+      <div style={{
+        position: "absolute", borderRadius: "50%", background: "rgba(255,255,255,0.88)",
+        width: "30%", height: "30%", top: "10%", left: "12%",
+      }} />
+      {/* Secondary soft glint */}
+      <div style={{
+        position: "absolute", borderRadius: "50%", background: "rgba(255,255,255,0.28)",
+        width: "16%", height: "16%", bottom: "14%", right: "16%",
+      }} />
+    </motion.div>
+  );
+}
+
+/* ─────────────────────────────────────────────────────
+   Hills SVG with grass tufts
+───────────────────────────────────────────────────── */
+function GreenHills() {
+  return (
+    <svg viewBox="0 0 1000 130" preserveAspectRatio="none" className="w-full h-full" fill="none">
+      <path d="M0,60 C80,22 200,88 340,45 C480,2 600,80 740,40 C860,8 940,65 1000,42 L1000,130 L0,130 Z" fill="#a8e15e"/>
+      <path d="M0,88 C130,58 270,108 410,78 C550,48 690,95 830,72 C910,60 965,82 1000,74 L1000,130 L0,130 Z" fill="#8ed650" opacity="0.6"/>
+      {[70,180,310,430,540,660,780,880].map((cx,i)=>(
+        <g key={i} transform={`translate(${cx},${[55,58,50,63,45,57,52,59][i]})`}>
+          <ellipse cx="0" cy="-6" rx="14" ry="9" fill="#70CA97" opacity="0.82"/>
+          <ellipse cx="-9" cy="-4" rx="10" ry="7" fill="#5ab868" opacity="0.72"/>
+          <ellipse cx="10" cy="-5" rx="9" ry="6" fill="#70CA97" opacity="0.78"/>
+        </g>
+      ))}
+      {[120,450,680,820].map((cx,i)=>(
+        <circle key={i} cx={cx} cy={[51,62,46,55][i]} r="4" fill={["#ffe066","#ff9ecd","#ffe066","#ff9ecd"][i]} opacity="0.88"/>
+      ))}
+    </svg>
+  );
+}
+
+/* ─────────────────────────────────────────────────────
+   Floating leaf
+───────────────────────────────────────────────────── */
+function FloatingLeaf({ x, y, size, delay, dur, rot }: { x:number;y:number;size:number;delay:number;dur:number;rot:number }) {
+  return (
+    <motion.div className="absolute pointer-events-none" style={{ left:`${x}%`, top:`${y}%`, zIndex:3 }}
+      animate={{ y:[-10,15,-5,10,-10], rotate:[rot,rot+14,rot-10,rot+6,rot], opacity:[0.42,0.68,0.52,0.72,0.42] }}
+      transition={{ duration:dur, repeat:Infinity, delay, ease:"easeInOut" }}>
+      <svg width={size} height={size*1.65} viewBox="0 0 30 50" fill="none">
+        <ellipse cx="15" cy="27" rx="10" ry="21" fill="#70CA97" transform={`rotate(${rot*0.25} 15 27)`}/>
+        <ellipse cx="15" cy="27" rx="6.5" ry="15" fill="#a8e15e" opacity="0.6" transform={`rotate(${rot*0.25} 15 27)`}/>
+        <line x1="15" y1="48" x2="15" y2="8" stroke="#44A76F" strokeWidth="1.3"/>
+      </svg>
+    </motion.div>
+  );
+}
+
+/* ─────────────────────────────────────────────────────
+   Horizontal language toggle (in header)
+───────────────────────────────────────────────────── */
+function LangToggleH({ lang, setLang, isDark }: { lang:Lang; setLang:(l:Lang)=>void; isDark:boolean }) {
+  return (
+    <div className={`relative flex rounded-xl p-1 gap-0.5 ${isDark?"bg-white/10 border border-white/15":"bg-black/8 border border-[#cbd4db]"}`}>
+      {(["en","tl"] as Lang[]).map(l=>(
+        <button key={l} onClick={()=>setLang(l)}
+          className="relative text-[11px] font-['Poppins',sans-serif] font-bold px-3 py-1.5 rounded-lg z-10 transition-colors"
+          style={{ color: lang===l ? "#0073ff" : isDark?"rgba(255,255,255,0.6)":"rgba(0,0,0,0.5)" }}>
+          {lang===l && (
+            <motion.div layoutId="lang-h-pill" className="absolute inset-0 rounded-lg bg-white shadow-sm" style={{zIndex:-1}}
+              transition={{ type:"spring", stiffness:420, damping:32 }}/>
+          )}
+          {l.toUpperCase()}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/* ─────────────────────────────────────────────────────
+   Shared App Header (all dashboard pages)
+───────────────────────────────────────────────────── */
+function AppHeader({ lang, setLang, isDark, onToggleDark, nav, activeView }: {
+  lang:Lang; setLang:(l:Lang)=>void; isDark:boolean; onToggleDark:()=>void;
+  nav:(v:View)=>void; activeView:View;
+}) {
+  const tx = T[lang];
+  const isLibActive = activeView === "library";
+  return (
+    <div className="relative mb-4 shrink-0">
+      <div className="absolute inset-0 rounded-2xl border border-white/40"
+        style={{ background:isDark?"rgba(20,26,46,0.85)":"rgba(255,255,255,0.68)", backdropFilter:"blur(20px)", WebkitBackdropFilter:"blur(20px)",
+          boxShadow: isDark?"0 4px 24px rgba(0,0,0,0.3)":"0 4px 24px rgba(46,194,253,0.08)" }}/>
+      <div className="relative z-10 px-5 py-3.5 flex items-center gap-3">
+        <div className="flex-1 min-w-0">
+          <h1 className="font-['Montserrat',sans-serif] font-bold text-[26px] leading-tight">
+            <span className="bg-clip-text text-transparent" style={{ backgroundImage:"radial-gradient(ellipse at left,#0fefff 0%,#08c0fc 50%,#0091fa 100%)" }}>DiyaLikha</span>
+            {" "}<span className="text-[#bf8ffd]">AI</span>
+          </h1>
+          <p className={`font-['Nunito',sans-serif] font-extrabold text-[12px] mt-0.5 ${isDark?"text-[#5dd3fc]":"text-[#0a88c8]"}`}>{tx.subtitle}</p>
+        </div>
+        {/* Right controls */}
+        <div className="flex items-center gap-2 ml-auto">
+          {/* My Library icon button — small, lives in header */}
+          <motion.button
+            onClick={() => nav("library")}
+            whileHover={{ scale:1.08 }} whileTap={{ scale:0.88 }}
+            title={tx.libTitle}
+            className={`p-2.5 rounded-xl border transition-all relative ${isLibActive
+              ?"bg-[#fe8bd0]/15 border-[#fe8bd0]/40 text-[#fe8bd0]"
+              :isDark?"bg-white/5 border-white/10 text-gray-400 hover:border-[#fe8bd0]/40 hover:text-[#fe8bd0]"
+              :"bg-white border-[#e2e8f0] text-[#94a3b8] hover:border-[#fe8bd0]/50 hover:text-[#fe8bd0]"}`}
+            style={{ boxShadow: isLibActive ? "0 0 12px rgba(254,139,208,0.3)" : "0 2px 6px rgba(0,0,0,0.05)" }}>
+            {isLibActive && (
+              <motion.div className="absolute inset-0 rounded-xl bg-[#fe8bd0]/10"
+                layoutId="lib-header-pill" transition={{ type:"spring", stiffness:400, damping:30 }}/>
+            )}
+            <img src={filesIconPng} className="relative z-10 w-4 h-4 object-contain"
+              style={{ filter: isLibActive ? "invert(65%) sepia(50%) saturate(600%) hue-rotate(291deg)" : isDark?"brightness(0) invert(0.5)":"brightness(0) invert(0.6)" }}/>
+          </motion.button>
+
+          <LangToggleH lang={lang} setLang={setLang} isDark={isDark}/>
+          <motion.button whileHover={{ scale:1.08, rotate:15 }} whileTap={{ scale:0.88 }}
+            onClick={onToggleDark}
+            className={`p-2.5 rounded-xl border transition-all ${isDark
+              ?"bg-[#1e2130] border-[#334155] text-yellow-300"
+              :"bg-white border-[#c0cdd8] text-[#64748b] hover:border-[#2ec2fd] hover:text-[#0073ff]"}`}
+            style={{ boxShadow:isDark?"0 0 14px rgba(253,224,71,0.28)":"0 2px 6px rgba(0,0,0,0.08)" }}>
+            {isDark ? <Sun size={16}/> : <Moon size={16}/>}
+          </motion.button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ─────────────────────────────────────────────────────
+   Sidebar — layoutId sliding pill animation
+───────────────────────────────────────────────────── */
+function Sidebar({ active, nav, isDark }: { active:View; nav:(v:View)=>void; isDark:boolean }) {
+  /* All icons are white. Active icon is full opacity + glassmorphism pill.
+     Inactive icons are white at reduced opacity. No color tints. */
+  const items: { id:View; label:string; renderIcon:(isActive:boolean)=>React.ReactNode }[] = [
+    { id:"home",       label:"Home",
+      renderIcon:(a)=><img src={homeIconPng}      className="w-5 h-5 object-contain" style={{ filter:"brightness(0) invert(1)", opacity:a?1:0.52 }}/> },
+    { id:"translator", label:"Translator",
+      renderIcon:(a)=><img src={translateIconPng} className="w-5 h-5 object-contain" style={{ filter:"brightness(0) invert(1)", opacity:a?1:0.52 }}/> },
+    { id:"assistant",  label:"AI Chat",
+      renderIcon:(a)=>(
+        <img src={cowHead1Png} alt="Bao"
+          style={{ width:"28px", height:"auto", objectFit:"contain",
+            filter:"brightness(0) invert(1)", opacity:a?1:0.52 }}/>
+      )},
+  ];
+
+  return (
+    <aside className="w-[78px] shrink-0 rounded-[28px] flex flex-col items-center py-5 gap-3 self-stretch"
+      style={{
+        background:isDark?"linear-gradient(160deg,#1a3a6b 0%,#0e2548 100%)":"linear-gradient(160deg,#1ec9ff 0%,#0099ee 100%)",
+        boxShadow:isDark?"0 8px 32px rgba(0,0,0,0.45),inset 0 1px 0 rgba(255,255,255,0.08)":"0 8px 36px rgba(46,194,253,0.38),inset 0 1px 0 rgba(255,255,255,0.35)",
+      }}>
+
+      {/* User profile placeholder */}
+      <div className="w-10 h-10 rounded-full border-2 border-white/35 flex items-center justify-center overflow-hidden shrink-0"
+        style={{ background:"rgba(255,255,255,0.18)", boxShadow:"0 0 12px rgba(255,255,255,0.18)" }}>
+        <svg viewBox="0 0 40 40" className="w-full h-full" fill="none">
+          <circle cx="20" cy="16" r="8" fill="rgba(255,255,255,0.75)"/>
+          <ellipse cx="20" cy="36" rx="13" ry="9" fill="rgba(255,255,255,0.75)"/>
+        </svg>
+      </div>
+
+      {/* Nav items — layoutId sliding glassmorphism pill travels between icons */}
+      <nav className="flex flex-col items-center gap-2.5 flex-1 w-full px-2.5 relative">
+        {items.map(({ id, label, renderIcon }) => {
+          const isActive = active === id;
+          return (
+            <motion.button key={id} onClick={()=>nav(id)} title={label}
+              whileHover={{ scale: isActive ? 1 : 1.09 }} whileTap={{ scale:0.88 }}
+              className="relative w-full flex items-center justify-center py-2.5 rounded-2xl transition-colors">
+              {/* Sliding pill — only rendered on active item, layoutId makes it animate between positions */}
+              {isActive && (
+                <motion.div layoutId="sidebar-pill"
+                  className="absolute inset-0 rounded-2xl"
+                  style={{ background:"rgba(255,255,255,0.24)", backdropFilter:"blur(12px)", WebkitBackdropFilter:"blur(12px)",
+                    border:"1px solid rgba(255,255,255,0.38)", boxShadow:"0 4px 20px rgba(0,0,0,0.15),inset 0 1px 0 rgba(255,255,255,0.28)" }}
+                  transition={{ type:"spring", stiffness:380, damping:30 }}/>
+              )}
+              {/* Ambient pulse on active */}
+              {isActive && (
+                <motion.div className="absolute inset-0 rounded-2xl pointer-events-none"
+                  animate={{ opacity:[0.1,0.28,0.1] }} transition={{ duration:2.5, repeat:Infinity }}
+                  style={{ background:"radial-gradient(circle,rgba(255,255,255,0.32) 0%,transparent 70%)" }}/>
+              )}
+              <span className="relative z-10">{renderIcon(isActive)}</span>
+            </motion.button>
+          );
+        })}
+      </nav>
+
+      <motion.button
+        onClick={()=>nav("settings")}
+        whileHover={{ scale:1.08, rotate: active==="settings"?0:30 }} whileTap={{ scale:0.88 }}
+        className="relative p-2 rounded-xl transition-opacity"
+        style={{ border:"1px solid rgba(255,255,255,0.2)", opacity: active==="settings"?1:0.55 }}
+        title="Settings">
+        {active==="settings" && (
+          <motion.div layoutId="sidebar-pill" className="absolute inset-0 rounded-xl"
+            style={{ background:"rgba(255,255,255,0.24)", backdropFilter:"blur(12px)", border:"1px solid rgba(255,255,255,0.38)" }}
+            transition={{ type:"spring", stiffness:380, damping:30 }}/>
+        )}
+        <Settings className="relative z-10 text-white" size={18}/>
+      </motion.button>
+    </aside>
+  );
+}
+
+/* ─────────────────────────────────────────────────────
+   Print Modal
+───────────────────────────────────────────────────── */
+function PrintModal({ lang, isDark, onClose }:{ lang:Lang; isDark:boolean; onClose:()=>void }) {
+  const tx = T[lang];
+  const bg = isDark?"bg-gray-900":"bg-white";
+  const textMain = isDark?"text-white":"text-[#1e293b]";
+  const border = isDark?"border-gray-700":"border-[#f1f5f9]";
+  return (
+    <motion.div className="fixed inset-0 z-50 flex items-center justify-center p-6"
+      style={{ background:"rgba(0,0,0,0.55)", backdropFilter:"blur(10px)" }}
+      initial={{ opacity:0 }} animate={{ opacity:1 }} exit={{ opacity:0 }}>
+      <motion.div className={`${bg} rounded-3xl shadow-2xl w-full max-w-2xl max-h-[88vh] flex flex-col overflow-hidden`}
+        initial={{ scale:0.88, y:32 }} animate={{ scale:1, y:0 }} exit={{ scale:0.88, y:32 }}
+        transition={{ type:"spring", stiffness:320, damping:26 }}>
+        <div className={`flex items-center justify-between px-7 py-5 border-b ${border} shrink-0`}>
+          <div>
+            <h2 className={`font-['Montserrat',sans-serif] font-bold text-xl ${textMain}`}>{tx.printPreview}</h2>
+            <p className={`text-xs mt-0.5 ${isDark?"text-gray-400":"text-[#94a3b8]"}`}>{tx.printReadyDesc}</p>
+          </div>
+          <motion.button onClick={onClose} whileHover={{scale:1.1}} whileTap={{scale:0.9}}
+            className={`p-2 rounded-xl ${isDark?"hover:bg-gray-800":"hover:bg-[#f8fafc]"} transition`}><X size={20}/></motion.button>
+        </div>
+        <div className="flex-1 overflow-auto px-7 py-5">
+          <div className={`border rounded-2xl p-8 ${isDark?"border-gray-700 bg-gray-800":"border-[#e2e8f0]"}`}>
+            <div className={`text-center pb-5 mb-6 border-b ${isDark?"border-gray-600":"border-[#e2e8f0]"}`}>
+              <div className="flex items-center justify-center gap-2 mb-1">
+                <img src={undesignPng} alt="" className="w-8 h-8 object-contain"/>
+                <span className="font-['Montserrat',sans-serif] font-bold text-lg text-[#265a80]">DiyaLikha AI</span>
+              </div>
+              <h1 className={`font-['Montserrat',sans-serif] font-bold text-2xl mt-2 ${textMain}`}>Mathematics Module 1 — Grade 4</h1>
+              <p className={`text-sm mt-1 ${isDark?"text-gray-400":"text-[#64748b]"}`}>Translated to Ilocano · Prepared by: Teacher</p>
+            </div>
+            <div className={`space-y-4 font-['Poppins',sans-serif] text-sm leading-7 ${textMain}`}>
+              <div><h2 className="font-bold text-base mb-1">I. Paksa / Topic</h2><p className={isDark?"text-gray-300":"text-[#374151]"}>Dagiti Numero ken Panagbilang — Polynomial Expressions</p></div>
+              <div><h2 className="font-bold text-base mb-1">II. Mga Katapusan / Objectives</h2>
+                <ul className={`list-disc list-inside space-y-1 ${isDark?"text-gray-300":"text-[#374151]"}`}>
+                  <li>Maamoan dagiti ubing ti konsepto ti polynomial.</li>
+                  <li>Mabalin nga agbilang ken mag-organisa kadagiti numero.</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div className={`flex items-center justify-end gap-3 px-7 py-4 border-t ${border} shrink-0`}>
+          <motion.button onClick={onClose} whileHover={{scale:1.03}} whileTap={{scale:0.96}}
+            className={`px-5 py-2.5 text-sm font-semibold border rounded-xl transition ${isDark?"border-gray-600 text-gray-300 hover:bg-gray-800":"border-[#e2e8f0] text-[#64748b] hover:bg-[#f8fafc]"}`}>{tx.close}</motion.button>
+          <motion.button onClick={()=>window.print()} whileHover={{scale:1.03,boxShadow:"0 8px 24px rgba(46,194,253,0.4)"}} whileTap={{scale:0.96}}
+            className="px-6 py-2.5 text-sm font-bold text-white bg-gradient-to-r from-[#2ec2fd] to-[#0091fa] rounded-xl shadow-lg flex items-center gap-2">
+            <Printer size={15}/> {tx.printNow}
+          </motion.button>
+        </div>
+      </motion.div>
+    </motion.div>
+  );
+}
+
+/* ─────────────────────────────────────────────────────
+   Screen A — Login Page
+   Layout rules:
+   • Content (title + subtitle + buttons) is vertically centered
+     inside the upper 50vh (the space above the cow head).
+   • Title is 1 line only — whitespace:nowrap.
+   • When Register/Login clicked: standalone buttons morph via layoutId
+     into the bottom of the glassmorphism form card.
+   • Cow uses natural dimensions (height:70vh, width:auto).
+───────────────────────────────────────────────────── */
+function LoginPage({ onLogin, lang }: { onLogin:(name:string)=>void; lang:Lang }) {
+  const tx = T[lang];
+  const [step, setStep] = useState<"welcome"|"login"|"register">("welcome");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [name, setName] = useState("");
+
+  const leaves = [
+    {x:4,y:8,size:24,delay:0,dur:5,rot:-22},{x:90,y:6,size:19,delay:0.7,dur:5.5,rot:28},
+    {x:14,y:38,size:17,delay:1.3,dur:4.2,rot:-38},{x:84,y:35,size:21,delay:0.4,dur:5.8,rot:18},
+    {x:48,y:5,size:15,delay:2.1,dur:4.5,rot:12},{x:28,y:18,size:13,delay:1.8,dur:3.8,rot:-17},
+    {x:72,y:22,size:16,delay:0.6,dur:5.1,rot:33},{x:93,y:55,size:14,delay:2.4,dur:4.4,rot:-28},
+    {x:2,y:60,size:18,delay:1.2,dur:5.3,rot:22},{x:60,y:12,size:12,delay:3,dur:4.8,rot:-8},
+  ];
+
+  const inputCls = "w-full bg-white/75 border border-white/80 rounded-2xl px-4 py-3 text-sm text-gray-700 placeholder-gray-400 outline-none focus:ring-2 focus:ring-[#2ec2fd]/40 font-['Poppins',sans-serif]";
+
+  /* Shared button style for layoutId morphing */
+  const btnStyle = (primary: boolean): React.CSSProperties => ({
+    background: primary
+      ? "linear-gradient(180deg,#1a8fff 0%,#0da2ff 100%)"
+      : "rgba(255,255,255,0.55)",
+    boxShadow: primary
+      ? "0 8px 32px rgba(0,115,255,0.42),inset 0 1px 0 rgba(255,255,255,0.3)"
+      : "inset 0 1px 0 rgba(255,255,255,0.4)",
+    border: primary ? "1px solid rgba(255,255,255,0.3)" : "1px solid rgba(0,115,255,0.3)",
+    color: primary ? "#fff" : "#0073ff",
+    borderRadius: "26px",
+    fontFamily: "'Montserrat',sans-serif",
+    fontWeight: 700,
+    cursor: "pointer",
+    backdropFilter: primary ? "none" : "blur(8px)",
+  });
+
+  return (
+    <div className="w-screen h-screen relative overflow-hidden"
+      style={{ background:"linear-gradient(180deg,#b0dcff 0%,#cce8ff 28%,#e4f2ff 55%,#f0f7ff 100%)" }}>
+
+      {/* Background leaves */}
+      {leaves.map((l,i)=><FloatingLeaf key={i} {...l}/>)}
+
+      {/* Ambient top glow */}
+      <motion.div className="absolute inset-0 pointer-events-none" style={{ zIndex:1,
+        background:"radial-gradient(ellipse 80% 50% at 50% 0%,rgba(46,194,253,0.18) 0%,transparent 70%)" }}
+        animate={{ opacity:[0.3,0.55,0.3] }} transition={{ duration:4, repeat:Infinity, ease:"easeInOut" }}/>
+
+      {/* ── CONTENT — all elements ABSOLUTELY positioned from the bottom.
+          Nothing is in flow, so nothing can ever cause another element to shift.
+          Title, subtitle, and buttons each have a fixed bottom coordinate. ── */}
+      <div className="absolute inset-x-0 top-0 z-20" style={{ height:"50vh" }}>
+
+        {/* Title — pinned at a fixed bottom offset. Cannot move regardless of siblings. */}
+        <motion.h1
+          initial={{ opacity:0 }} animate={{ opacity:1 }}
+          transition={{ duration:0.6, ease:[0.16,1,0.3,1] }}
+          className="absolute left-0 right-0 text-center font-['Montserrat',sans-serif] font-bold text-[#265a80] leading-none"
+          style={{
+            bottom:"19vh",
+            fontSize:"clamp(60px,13vw,112px)", whiteSpace:"nowrap",
+            textShadow:"0 6px 32px rgba(255,255,255,0.6),0 2px 8px rgba(38,90,128,0.2)",
+            letterSpacing:"-2.5px",
+          }}>
+          DiyaLikha AI
+        </motion.h1>
+
+        {/* Subtitle — pinned independently. No connection to title or buttons. */}
+        <motion.p
+          initial={{ opacity:0 }} animate={{ opacity:1 }}
+          transition={{ duration:0.6, delay:0.08, ease:[0.16,1,0.3,1] }}
+          className="absolute left-0 right-0 text-center font-['Montserrat',sans-serif] font-semibold italic text-[#1f6099] leading-snug whitespace-pre-line"
+          style={{ bottom:"11vh", fontSize:"clamp(14px,3.2vw,20px)" }}>
+          {tx.tagline}
+        </motion.p>
+
+        {/* Buttons — pinned at the very bottom. AnimatePresence only fades them. */}
+        <div className="absolute left-0 right-0 flex justify-center" style={{ bottom:"2.5vh" }}>
+          <div style={{ width:"min(92vw,500px)" }}>
+            <AnimatePresence>
+              {step === "welcome" && (
+                <motion.div
+                  key="standalone-buttons"
+                  className="w-full flex gap-4"
+                  initial={{ opacity:0 }} animate={{ opacity:1 }}
+                  exit={{ opacity:0 }}
+                  transition={{ duration:0.16 }}>
+                  <motion.button
+                    className="flex-1 font-['Montserrat',sans-serif] font-bold"
+                    style={{ ...btnStyle(true), fontSize:"clamp(18px,3.8vw,26px)", padding:"15px 0" }}
+                    whileHover={{ scale:1.05, boxShadow:"0 12px 48px rgba(0,115,255,0.6)" }}
+                    whileTap={{ scale:0.93 }}
+                    onClick={() => setStep("register")}>
+                    {tx.register}
+                  </motion.button>
+                  <motion.button
+                    className="flex-1 font-['Montserrat',sans-serif] font-bold"
+                    style={{ ...btnStyle(true), fontSize:"clamp(18px,3.8vw,26px)", padding:"15px 0" }}
+                    whileHover={{ scale:1.05, boxShadow:"0 12px 48px rgba(0,115,255,0.6)" }}
+                    whileTap={{ scale:0.93 }}
+                    onClick={() => setStep("login")}>
+                    {tx.login}
+                  </motion.button>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+        </div>
+
+      </div>
+
+      {/* ── FORM OVERLAY — centered, floats as dialog, z-30 ──
+          Buttons morph INTO the bottom of this card via layoutId.
+          pointer-events-none on backdrop so bg clicks pass through. */}
+      <AnimatePresence>
+        {step !== "welcome" && (
+          <motion.div
+            className="absolute inset-0 z-30 flex items-center justify-center pointer-events-none"
+            style={{ paddingBottom:"22vh" }}
+            initial={{ opacity:0 }} animate={{ opacity:1 }} exit={{ opacity:0 }}
+            transition={{ duration:0.2 }}>
+            <motion.div
+              className="pointer-events-auto w-full rounded-3xl px-6 py-5 flex flex-col gap-3"
+              style={{ maxWidth:"360px",
+                background:"rgba(255,255,255,0.46)", backdropFilter:"blur(28px)", WebkitBackdropFilter:"blur(28px)",
+                border:"1px solid rgba(255,255,255,0.74)",
+                boxShadow:"0 12px 48px rgba(0,115,255,0.14),inset 0 1px 0 rgba(255,255,255,0.6)" }}
+              initial={{ scale:0.9, y:-20 }} animate={{ scale:1, y:0 }} exit={{ scale:0.9, y:-20 }}
+              transition={{ type:"spring", stiffness:320, damping:28 }}>
+
+              {/* Form title */}
+              <h2 className="font-['Montserrat',sans-serif] font-bold text-xl text-[#265a80] text-center">
+                {step==="login" ? tx.login : tx.register}
+              </h2>
+
+              {/* Fields */}
+              <div className="flex flex-col gap-2.5">
+                {step==="register" && (
+                  <motion.input type="text" placeholder={tx.namePh} value={name}
+                    onChange={e=>setName(e.target.value)} className={inputCls}
+                    initial={{ opacity:0, height:0 }} animate={{ opacity:1, height:"44px" }}
+                    transition={{ duration:0.28 }}/>
+                )}
+                <input type="email" placeholder={tx.emailPh} value={email}
+                  onChange={e=>setEmail(e.target.value)} className={inputCls}/>
+                <input type="password" placeholder={tx.passPh} value={password}
+                  onChange={e=>setPassword(e.target.value)} className={inputCls}/>
+              </div>
+
+              {/* Buttons at bottom — simple, no layoutId, no jitter */}
+              <motion.div className="flex gap-3 mt-1"
+                initial={{ opacity:0, y:8 }} animate={{ opacity:1, y:0 }}
+                transition={{ delay:0.12, duration:0.3, ease:[0.16,1,0.3,1] }}>
+                {/* Primary submit */}
+                <motion.button
+                  className="flex-1 font-['Montserrat',sans-serif] font-bold text-base py-3 rounded-[24px]"
+                  style={btnStyle(true)}
+                  whileHover={{ scale:1.04, boxShadow:"0 10px 36px rgba(0,115,255,0.55)" }}
+                  whileTap={{ scale:0.95 }}
+                  onClick={() => onLogin(name || "User")}>
+                  {step==="login" ? tx.login : tx.register}
+                </motion.button>
+                {/* Switch action */}
+                <motion.button
+                  className="flex-1 font-['Montserrat',sans-serif] font-bold text-base py-3 rounded-[24px]"
+                  style={btnStyle(false)}
+                  whileHover={{ scale:1.04 }}
+                  whileTap={{ scale:0.95 }}
+                  onClick={() => setStep(step==="login" ? "register" : "login")}>
+                  {step==="login" ? tx.register : tx.login}
+                </motion.button>
+              </motion.div>
+
+              {/* Back link */}
+              <button onClick={() => setStep("welcome")}
+                className="text-xs text-[#0073ff]/70 hover:text-[#0073ff] hover:underline text-center font-['Poppins',sans-serif] transition-colors">
+                {tx.back}
+              </button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Hills — z-10 */}
+      <div className="absolute bottom-0 left-0 right-0 z-10 pointer-events-none" style={{ height:"26vh" }}>
+        <GreenHills/>
+      </div>
+
+      {/* Leaf clusters */}
+      {([["left","0px",false],["right","0px",true]] as [string,string,boolean][]).map(([side,pos,flip])=>(
+        <div key={side} className="absolute bottom-16 z-10 pointer-events-none"
+          style={{ [side]:pos, width:"80px", height:"110px" }}>
+          <svg viewBox="0 0 80 110" className="w-full h-full" fill="none" style={flip?{transform:"scaleX(-1)"}:{}}>
+            <defs><linearGradient id={`lc${side}`} x1="0" y1="0" x2="0" y2="1"><stop stopColor="#70CA97"/><stop offset="1" stopColor="#44A76F"/></linearGradient></defs>
+            <ellipse cx="40" cy="80" rx="28" ry="48" fill={`url(#lc${side})`} transform="rotate(-28 40 80)"/>
+            <ellipse cx="44" cy="80" rx="22" ry="40" fill={`url(#lc${side})`} transform="rotate(18 44 80)" opacity="0.8"/>
+            <ellipse cx="40" cy="76" rx="14" ry="28" fill="#a8e15e" opacity="0.65"/>
+          </svg>
+        </div>
+      ))}
+
+      {/* ── COW HEAD — cow_head-1.PNG with original built-in eyes (no cursor tracking) ──
+          Container clips at nose (overflow:hidden, height:50vh).
+          Image: height:70vh, width:auto, bottom:-20vh → nose sits at container bottom. */}
+      {/* Cow head — cowHead1Png with original built-in eyes, no interactive pupils */}
+      <div className="absolute bottom-0 left-0 right-0 z-20 pointer-events-none overflow-hidden"
+        style={{ height:"50vh" }}>
+        <img
+          src={cowHead1Png}
+          alt="Bao mascot"
+          style={{
+            position:"absolute",
+            height:"70vh",
+            width:"auto",
+            bottom:"-20vh",
+            left:"50%",
+            transform:"translateX(-50%)",
+            display:"block",
+          }}
+        />
+      </div>
+    </div>
+  );
+}
+
+/* ─────────────────────────────────────────────────────
+   Screen B — Home Dashboard
+───────────────────────────────────────────────────── */
+function HomePage({ nav, lang, setLang, isDark, onToggleDark, userName }:{
+  nav:(v:View)=>void; lang:Lang; setLang:(l:Lang)=>void; isDark:boolean; onToggleDark:()=>void; userName:string;
+}) {
+  const tx = T[lang];
+  const firstName = userName.split(" ")[0]||"User";
+  const cardBg = isDark?"bg-gray-800":"bg-white";
+  const textMain = isDark?"text-white":"text-[#1e293b]";
+
+  const tools = [
+    /* Translator first, AI Assistant second — My Library is in the header */
+    { accent:"#bf8ffd", tint:"rgba(191,143,253,0.10)", label:tx.transTitle, desc:tx.transDesc, cta:tx.transCta, view:"translator" as View,
+      icon:<img src={translateIconPng} className="w-8 h-8 object-contain" style={{ filter:"invert(55%) sepia(60%) saturate(700%) hue-rotate(228deg) brightness(110%)" }}/> },
+    { accent:"#ffb425", tint:"rgba(255,180,37,0.10)",  label:tx.aiTitle,    desc:tx.aiDesc,    cta:tx.aiCta,    view:"assistant" as View,
+      icon:<img src={cowHead1Png} style={{ width:"36px", height:"auto", objectFit:"contain", filter:"invert(70%) sepia(80%) saturate(600%) hue-rotate(10deg) brightness(110%)" }}/> },
+  ];
+
+  return (
+    <div className="flex flex-col flex-1 min-h-0">
+      {/* Banner */}
+      <div className="relative rounded-[28px] overflow-hidden shrink-0 shadow-xl"
+        style={{ height:"clamp(210px,27vh,285px)", background:"linear-gradient(115deg,#1ec6ff 0%,#42cfff 45%,#90e2ff 100%)",
+          boxShadow:"0 12px 40px rgba(46,194,253,0.38)" }}>
+        <motion.div className="absolute inset-0 pointer-events-none z-5"
+          animate={{ x:["-100%","120%"] }} transition={{ duration:3.5, repeat:Infinity, repeatDelay:5, ease:"easeInOut" }}
+          style={{ background:"linear-gradient(90deg,transparent 0%,rgba(255,255,255,0.18) 50%,transparent 100%)" }}/>
+        <motion.h2 initial={{ opacity:0, x:-24 }} animate={{ opacity:1, x:0 }}
+          transition={{ duration:0.7, ease:[0.16,1,0.3,1] }}
+          className="absolute left-8 top-1/2 -translate-y-1/2 z-10 font-['Montserrat',sans-serif] font-bold tracking-tight select-none"
+          style={{ fontSize:"clamp(36px,5.5vw,70px)",
+            background:"linear-gradient(170deg,rgba(255,255,255,0.28) 11%,rgba(248,250,255,0.9) 40%,rgba(245,248,255,0.95) 62%,rgba(255,255,255,0.18) 96%)",
+            WebkitBackgroundClip:"text", WebkitTextFillColor:"transparent", backgroundClip:"text" }}>
+          {tx.greeting(firstName)}
+        </motion.h2>
+        <div className="absolute bottom-0 left-0 right-0 z-10 pointer-events-none" style={{ height:"38%" }}><GreenHills/></div>
+        {/* Cow head rightmost — cowHead1Png */}
+        <div className="absolute top-0 bottom-0 right-0 z-20 pointer-events-none overflow-hidden" style={{ width:"42%" }}>
+          <img src={cowHead1Png} alt="Bao"
+            style={{ position:"absolute", height:"105%", width:"auto", right:"-8px", top:"0", objectFit:"contain", objectPosition:"right top" }}/>
+        </div>
+      </div>
+
+      {/* Tools strip */}
+      <div className={`mt-3 mb-3 px-4 py-2.5 rounded-2xl border shrink-0 ${isDark?"bg-gray-800 border-gray-700":"bg-white border-[#f1f5f9]"}`}
+        style={{ boxShadow:"0 2px 8px rgba(0,0,0,0.04)" }}>
+        <span className="font-['Montserrat',sans-serif] font-bold text-xl text-[#a8e15e]">{tx.tools}</span>
+      </div>
+
+      {/* Tool cards */}
+      {/* No overflow-hidden — cards need room to scale on hover without being clipped */}
+      <div className="grid grid-cols-2 gap-5 flex-1 min-h-0" style={{ perspective:"1200px" }}>
+        {tools.map(({ accent, tint, label, desc, cta, view, icon }) => (
+          <motion.div key={label}
+            whileHover={{ scale:1.022, rotateY:3, rotateX:-2 }}
+            whileTap={{ scale:0.97 }}
+            transition={{ type:"spring", stiffness:280, damping:22 }}
+            className={`relative rounded-[32px] p-7 overflow-hidden flex flex-col cursor-pointer ${cardBg}`}
+            style={{ borderBottom:`7px solid ${accent}`, boxShadow:`0 6px 20px ${tint}`, transformStyle:"preserve-3d" }}>
+            <div className="absolute -top-8 -right-8 w-36 h-36 rounded-full pointer-events-none" style={{ background:tint }}/>
+            <motion.div className="absolute inset-0 rounded-[32px] pointer-events-none"
+              initial={{ opacity:0 }} whileHover={{ opacity:1 }}
+              style={{ background:"linear-gradient(135deg,rgba(255,255,255,0.07) 0%,rgba(255,255,255,0) 60%)" }}/>
+            <div className="w-14 h-14 rounded-2xl flex items-center justify-center mb-5 shrink-0" style={{ background:tint }}>
+              {icon}
+            </div>
+            <h3 className={`font-['Nunito',sans-serif] font-black text-2xl mb-2 shrink-0 ${textMain}`}>{label}</h3>
+            <p className={`font-['Poppins',sans-serif] text-sm leading-relaxed flex-1 ${isDark?"text-gray-400":"text-[#64748b]"}`}>{desc}</p>
+            <motion.button onClick={()=>nav(view)}
+              whileHover={{ scale:1.04, boxShadow:`0 12px 32px ${tint}` }} whileTap={{ scale:0.95 }}
+              className="w-full py-3.5 rounded-3xl font-['Fredoka',sans-serif] font-bold text-lg text-white mt-6 shrink-0"
+              style={{ background:accent }}>
+              {cta}
+            </motion.button>
+          </motion.div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/* ─────────────────────────────────────────────────────
+   Screen C — Translator (with embedded Proofread + download + paste popup)
+───────────────────────────────────────────────────── */
+function TranslatorPage({ nav, lang, setLang, isDark, onToggleDark, onSaveDraft }:{
+  nav:(v:View)=>void; lang:Lang; setLang:(l:Lang)=>void; isDark:boolean; onToggleDark:()=>void; onSaveDraft:(f:DraftFile)=>void;
+}) {
+  const tx = T[lang];
+  const [transMode, setTransMode] = useState<TransMode>("translate");
+  const [gradeLevel, setGradeLevel] = useState("Grade 3");
+  const [subject, setSubject] = useState("Science & Nature");
+  const [dialect, setDialect] = useState("Waray (Samar-Leyte)");
+  const [inputLang, setInputLang] = useState<"english"|"tagalog">("english");
+  const [dragging, setDragging] = useState(false);
+  const [hasFile, setHasFile] = useState(false);
+  const [fileName, setFileName] = useState("");
+  const [exportFmt, setExportFmt] = useState<"pdf"|"docx"|null>(null);
+  const [printOpen, setPrintOpen] = useState(false);
+  const [pasteOpen, setPasteOpen] = useState(false);
+  const [pastedText, setPastedText] = useState("");
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  const cardBg = isDark?"bg-gray-800":"bg-white";
+  const textMain = isDark?"text-white":"text-[#1e293b]";
+  const textMuted = isDark?"text-gray-400":"text-[#64748b]";
+  const inputCls = `w-full border rounded-xl px-3 py-2.5 text-sm font-medium appearance-none pr-8 focus:outline-none focus:ring-2 focus:ring-[#bf8ffd]/30 ${isDark?"bg-gray-700 border-gray-600 text-white":"bg-white/70 border-[#d8b4fe] text-[#1e293b]"}`;
+
+  const grades = ["Grade 1","Grade 2","Grade 3","Grade 4","Grade 5","Grade 6"];
+  const subjects = lang==="en"?["Science & Nature","Mathematics","English","Filipino","Social Studies"]:["Agham","Matematika","Ingles","Filipino","Araling Panlipunan"];
+  const dialects = ["Waray (Samar-Leyte)","Ilocano","Cebuano","Bicolano","Kapampangan","Hiligaynon"];
+
+  /* Immediate download — no prompt */
+  const handleDownload = useCallback(() => {
+    if (!exportFmt) return;
+    const content = `DiyaLikha AI — Translated Lesson Material\n\nGrade Level: ${gradeLevel}\nSubject: ${subject}\nTarget Dialect: ${dialect}\n\n--- TRANSLATED CONTENT ---\n\nModulo 1: Dagiti Numero ken Panagbilang\n\nTi maysa a polynomial ket buklen dagiti variables ken coefficients. Kadagiti ubing iti ${gradeLevel}, nasken a maawatanda ti konsepto ti panagbilang.\n\nUsarentayo ti lokal a dialect tapno nalaklaka a maawatan dagiti ubing ti leksion.\n`;
+    const mimeType = exportFmt==="pdf" ? "application/pdf" : "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+    const blob = new Blob([content], { type:"text/plain" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = `lesson-material.${exportFmt}`; a.click();
+    URL.revokeObjectURL(url);
+  }, [exportFmt, gradeLevel, subject, dialect]);
+
+  const handleSaveDraft = () => {
+    onSaveDraft({ id:Date.now().toString(), name:"Mathematics Module 1", category:"MATHEMATICS",
+      grade:"Grade 4", subtitle:"English to Ilocano — Draft",
+      date:new Date().toLocaleDateString("en-US",{month:"2-digit",day:"2-digit",year:"2-digit"}) });
+  };
+
+  return (
+    <>
+      <AnimatePresence>{printOpen && <PrintModal lang={lang} isDark={isDark} onClose={()=>setPrintOpen(false)}/>}</AnimatePresence>
+
+      {/* Paste popup */}
+      <AnimatePresence>
+        {pasteOpen && (
+          <motion.div className="fixed inset-0 z-50 flex items-center justify-center p-6"
+            style={{ background:"rgba(0,0,0,0.5)", backdropFilter:"blur(8px)" }}
+            initial={{ opacity:0 }} animate={{ opacity:1 }} exit={{ opacity:0 }}>
+            <motion.div className={`${cardBg} rounded-3xl shadow-2xl w-full max-w-xl flex flex-col overflow-hidden`}
+              initial={{ scale:0.88,y:28 }} animate={{ scale:1,y:0 }} exit={{ scale:0.88,y:28 }}
+              transition={{ type:"spring", stiffness:320, damping:26 }}>
+              <div className={`flex items-center justify-between px-6 py-4 border-b ${isDark?"border-gray-700":"border-[#f1f5f9]"}`}>
+                <h2 className={`font-['Montserrat',sans-serif] font-bold text-lg ${textMain}`}>{tx.pasteTitle}</h2>
+                <motion.button onClick={()=>setPasteOpen(false)} whileHover={{scale:1.1}} whileTap={{scale:0.9}}
+                  className={`p-2 rounded-xl ${isDark?"hover:bg-gray-700":"hover:bg-[#f8fafc]"}`}><X size={18}/></motion.button>
+              </div>
+              <div className="p-6">
+                <textarea value={pastedText} onChange={e=>setPastedText(e.target.value)}
+                  placeholder={tx.pasteHint} rows={8}
+                  className={`w-full border rounded-2xl px-4 py-3 text-sm font-['Poppins',sans-serif] resize-none focus:outline-none focus:ring-2 focus:ring-[#bf8ffd]/40 ${isDark?"bg-gray-700 border-gray-600 text-white placeholder-gray-500":"bg-[#f9fbff] border-[#e2e8f0] text-[#1e293b] placeholder-[#94a3b8]"}`}/>
+              </div>
+              <div className={`flex justify-end gap-3 px-6 pb-5`}>
+                <button onClick={()=>setPasteOpen(false)} className={`px-4 py-2.5 text-sm font-semibold border rounded-xl ${isDark?"border-gray-600 text-gray-300":"border-[#e2e8f0] text-[#64748b]"}`}>{tx.close}</button>
+                <motion.button whileHover={{scale:1.04}} whileTap={{scale:0.95}}
+                  onClick={()=>{ if(pastedText.trim()){ setHasFile(true); setFileName("Pasted text"); } setPasteOpen(false); }}
+                  className="px-5 py-2.5 text-sm font-bold text-white bg-gradient-to-r from-[#bf8ffd] to-[#a855f7] rounded-xl shadow">
+                  {tx.pasteConfirm}
+                </motion.button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <div className="flex flex-col flex-1 min-h-0">
+        <AnimatePresence mode="wait">
+          {transMode==="translate" ? (
+            <motion.div key="trans"
+              initial={{ opacity:0, x:-30 }} animate={{ opacity:1, x:0 }} exit={{ opacity:0, x:-30 }}
+              transition={{ type:"spring", stiffness:300, damping:28 }}
+              className="flex gap-5 flex-1 min-h-0 overflow-hidden">
+
+              {/* Left */}
+              <div className="w-[370px] shrink-0 flex flex-col gap-4 overflow-auto">
+                <div className={`${cardBg} rounded-2xl p-5 shadow-sm`}>
+                  {/* Input Material label — same color as paste text (purple/blue) */}
+                  <div className="flex items-center justify-between mb-4">
+                    <span className="font-['Nunito',sans-serif] font-extrabold text-[10px] tracking-widest uppercase text-[#7c3aed]">{tx.inputMat}</span>
+                    <div className="flex items-center gap-1 text-[10px] font-['Nunito',sans-serif] font-extrabold">
+                      <span className={`${textMuted} mr-1`}>{tx.inputIn}</span>
+                      {(["english","tagalog"] as const).map(l=>(
+                        <motion.button key={l} whileTap={{scale:0.88}} onClick={()=>setInputLang(l)}
+                          className={`px-2.5 py-1 rounded-lg transition text-xs ${inputLang===l?"bg-[#2ec2fd] text-white":`${isDark?"text-gray-400":"text-[#64748b]"}`}`}>
+                          {l==="english"?tx.english:tx.tagalog}
+                        </motion.button>
+                      ))}
+                    </div>
+                  </div>
+                  <input ref={fileRef} type="file" accept=".pdf,.docx,.txt,.pptx" className="hidden"
+                    onChange={e=>{const f=e.target.files?.[0];if(f){setHasFile(true);setFileName(f.name);}}}/>
+                  <div onClick={()=>fileRef.current?.click()}
+                    onDragOver={e=>{e.preventDefault();setDragging(true);}} onDragLeave={()=>setDragging(false)}
+                    onDrop={e=>{e.preventDefault();setDragging(false);const f=e.dataTransfer.files[0];if(f){setHasFile(true);setFileName(f.name);}}}
+                    className={`border-2 border-dashed rounded-2xl p-8 text-center cursor-pointer transition-all ${dragging?"border-[#2ec2fd] bg-[#f0fbff]":`${isDark?"border-gray-600 bg-gray-750":"border-[#cbd4db] bg-[#f9fbff]"}`}`}>
+                    <div className="w-14 h-14 rounded-full bg-[#bf8ffd]/15 flex items-center justify-center mx-auto mb-3">
+                      <Upload className="text-[#bf8ffd]" size={24}/>
+                    </div>
+                    <p className={`font-['Plus_Jakarta_Sans',sans-serif] font-bold text-sm mb-1 ${textMain}`}>{hasFile?fileName:tx.dropLesson}</p>
+                    <p className={`text-xs ${textMuted}`}>{tx.dropSub}</p>
+                    <p className={`text-xs ${textMuted} my-2`}>{tx.orTxt}</p>
+                    {/* Paste text — same color as Input Material label */}
+                    <button onClick={e=>{e.stopPropagation();setPasteOpen(true);}}
+                      className="text-xs text-[#7c3aed] font-['Plus_Jakarta_Sans',sans-serif] font-semibold hover:underline">{tx.pasteTxt}</button>
+                  </div>
+                </div>
+
+                {/* Context params */}
+                <div className="rounded-2xl p-5 shadow-sm border border-[#e9d5ff]"
+                  style={{ background:"linear-gradient(135deg,rgba(191,143,253,0.14) 0%,rgba(168,85,247,0.08) 100%)" }}>
+                  <p className="font-['Plus_Jakarta_Sans',sans-serif] font-bold text-sm text-[#7c3aed] mb-4 flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-[#bf8ffd] shrink-0"/>{tx.ctxParams}
+                  </p>
+                  <div className="grid grid-cols-2 gap-3 mb-3">
+                    {[{label:tx.gradeLevel,val:gradeLevel,set:setGradeLevel,opts:grades},{label:tx.subjectArea,val:subject,set:setSubject,opts:subjects}].map(({label,val,set,opts})=>(
+                      <div key={label}>
+                        <label className="text-[10px] font-semibold text-[#7c3aed] uppercase tracking-wider block mb-1">{label}</label>
+                        <div className="relative">
+                          <select value={val} onChange={e=>set(e.target.value)} className={inputCls}>{opts.map(o=><option key={o}>{o}</option>)}</select>
+                          <ChevronDown className="absolute right-2.5 top-3 text-[#bf8ffd] pointer-events-none" size={13}/>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-semibold text-[#7c3aed] uppercase tracking-wider block mb-1">{tx.targetDialect}</label>
+                    <div className="relative">
+                      <select value={dialect} onChange={e=>setDialect(e.target.value)} className={inputCls}>{dialects.map(d=><option key={d}>{d}</option>)}</select>
+                      <ChevronDown className="absolute right-2.5 top-3 text-[#bf8ffd] pointer-events-none" size={13}/>
+                    </div>
+                  </div>
+                </div>
+
+                {/* ── Translate button — below left panel ── */}
+                <motion.button
+                  whileHover={{ scale:1.03, boxShadow:"0 12px 32px rgba(139,92,246,0.5)" }}
+                  whileTap={{ scale:0.96 }}
+                  className="w-full py-3 rounded-xl font-['Montserrat',sans-serif] font-bold text-white flex items-center justify-center gap-2 mt-1 shrink-0 text-sm"
+                  style={{
+                    background:"linear-gradient(135deg,#bf8ffd 0%,#a855f7 50%,#8b3cf7 100%)",
+                    boxShadow:"0 6px 20px rgba(139,92,246,0.35), inset 0 1px 0 rgba(255,255,255,0.22)",
+                  }}>
+                  <img src={translateIconPng} className="w-4 h-4 object-contain" style={{ filter:"brightness(0) invert(1)" }}/>
+                  {lang==="en" ? "Translate Material" : "Isalin ang Materyal"}
+                </motion.button>
+              </div>
+
+              {/* Right panel */}
+              <div className={`flex-1 min-h-0 ${cardBg} rounded-2xl shadow-sm flex flex-col overflow-hidden`}>
+                <div className={`px-6 pt-5 pb-2 text-center shrink-0 border-b ${isDark?"border-gray-700":"border-[#f1f5f9]"}`}>
+                  <span className={`font-['Plus_Jakarta_Sans',sans-serif] font-bold text-sm tracking-wide ${textMuted}`}>{tx.translatedMat}</span>
+                </div>
+                <AnimatePresence mode="wait">
+                  {(hasFile || pastedText.trim()) ? (
+                    /* ── Input preview ── show what will be translated */
+                    <motion.div key="preview"
+                      initial={{ opacity:0, y:8 }} animate={{ opacity:1, y:0 }} exit={{ opacity:0, y:-8 }}
+                      transition={{ duration:0.3, ease:[0.16,1,0.3,1] }}
+                      className="flex-1 flex flex-col min-h-0 overflow-hidden">
+                      {/* Preview label */}
+                      <div className={`px-5 py-2.5 flex items-center gap-2 border-b shrink-0 ${isDark?"border-gray-700":"border-[#f1f5f9]"}`}>
+                        <div className="w-2 h-2 rounded-full bg-[#a8e15e] animate-pulse"/>
+                        <span className="text-[11px] font-['Poppins',sans-serif] font-semibold text-[#64748b]">
+                          {hasFile ? fileName : lang==="en"?"Pasted text ready to translate":"Text na naka-paste, handa nang isalin"}
+                        </span>
+                        <motion.button whileHover={{scale:1.1}} whileTap={{scale:0.9}}
+                          onClick={()=>{ setHasFile(false); setFileName(""); setPastedText(""); }}
+                          className="ml-auto p-1 rounded-lg hover:bg-gray-100 transition">
+                          <X size={12} className="text-[#94a3b8]"/>
+                        </motion.button>
+                      </div>
+                      {/* Scrollable text preview */}
+                      <div className="flex-1 overflow-auto p-5">
+                        {pastedText.trim() ? (
+                          <pre className={`font-['Poppins',sans-serif] text-sm leading-7 whitespace-pre-wrap break-words ${textMain}`}>
+                            {pastedText}
+                          </pre>
+                        ) : (
+                          <div className="flex flex-col items-center justify-center h-full gap-3 opacity-70">
+                            <FileText size={36} className="text-[#cbd4db]"/>
+                            <p className={`text-sm font-['Poppins',sans-serif] ${textMuted}`}>{fileName}</p>
+                          </div>
+                        )}
+                      </div>
+                    </motion.div>
+                  ) : (
+                    /* ── Waiting state ── */
+                    <motion.div key="waiting"
+                      initial={{ opacity:0 }} animate={{ opacity:1 }} exit={{ opacity:0 }}
+                      transition={{ duration:0.3 }}
+                      className="flex-1 flex flex-col items-center justify-center px-8 min-h-0">
+                      <motion.img src={baoPng} alt="Bao"
+                        animate={{ y:[0,-8,0] }} transition={{ duration:3.5, repeat:Infinity, ease:"easeInOut" }}
+                        style={{ height:"clamp(120px,24vh,210px)", width:"auto" }}/>
+                      <p className={`font-['Plus_Jakarta_Sans',sans-serif] font-bold text-xl mt-4 ${textMain}`}>{tx.waitingIdeas}</p>
+                      <p className={`text-sm mt-1 text-center ${textMuted}`}>{tx.uploadStart}</p>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+                {/* Action buttons inside right panel */}
+                <div className={`px-6 pb-5 pt-3 border-t ${isDark?"border-gray-700":"border-[#f1f5f9]"} shrink-0`}>
+                  <div className="flex items-center justify-between flex-wrap gap-2">
+                    <div className="flex items-center gap-2">
+                      <span className={`text-[10px] font-['Nunito',sans-serif] font-extrabold tracking-widest ${textMuted}`}>{tx.exportLbl}</span>
+                      {[{fmt:"pdf" as const,label:"PDF"},{fmt:"docx" as const,label:"DOCX"}].map(({fmt,label})=>(
+                        <motion.button key={fmt} whileHover={{scale:1.05}} whileTap={{scale:0.9}}
+                          onClick={()=>setExportFmt(exportFmt===fmt?null:fmt)}
+                          className={`px-3 py-1.5 text-xs font-semibold rounded-xl flex items-center gap-1.5 border transition ${exportFmt===fmt?"bg-[#0073ff] text-white border-[#0073ff] shadow-md":`${isDark?"border-gray-600 text-gray-300":"border-[#e2e8f0] text-[#64748b]"}`}`}>
+                          <FileDown size={12}/> {label} {exportFmt===fmt&&<Check size={10}/>}
+                        </motion.button>
+                      ))}
+                      {/* Download button — immediate, no prompt */}
+                      <motion.button whileHover={{scale:1.05,boxShadow:"0 6px 18px rgba(0,115,255,0.3)"}} whileTap={{scale:0.9}}
+                        onClick={handleDownload}
+                        disabled={!exportFmt}
+                        className={`px-3 py-1.5 text-xs font-semibold rounded-xl flex items-center gap-1.5 transition ${exportFmt?"bg-gradient-to-r from-[#2ec2fd] to-[#0091fa] text-white shadow":"opacity-40 cursor-not-allowed bg-gray-200 text-gray-500"}`}>
+                        <FileDown size={12}/> {tx.download}
+                      </motion.button>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <motion.button whileHover={{scale:1.05}} whileTap={{scale:0.9}} onClick={()=>setPrintOpen(true)}
+                        className="px-3 py-1.5 text-xs font-semibold text-[#2d8653] bg-[#f0fdf4] border border-[#a8e15e] rounded-xl flex items-center gap-1.5">
+                        <Printer size={12}/> {tx.readyPrint}
+                      </motion.button>
+                      <motion.button whileHover={{scale:1.05,boxShadow:"0 8px 24px rgba(191,143,253,0.5)"}} whileTap={{scale:0.9}}
+                        onClick={()=>setTransMode("proofread")}
+                        className="px-3 py-1.5 text-xs font-bold text-white bg-gradient-to-r from-[#bf8ffd] to-[#a855f7] rounded-xl shadow flex items-center gap-1.5">
+                        <Pencil size={12}/> {tx.proofread}
+                      </motion.button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </motion.div>
+          ) : (
+            /* Proofread */
+            <motion.div key="proof"
+              initial={{ opacity:0, x:40 }} animate={{ opacity:1, x:0 }} exit={{ opacity:0, x:40 }}
+              transition={{ type:"spring", stiffness:300, damping:28 }}
+              className="flex flex-col flex-1 min-h-0">
+              <div className="flex items-center gap-3 mb-4 shrink-0">
+                <motion.button whileHover={{scale:1.05}} whileTap={{scale:0.95}} onClick={()=>setTransMode("translate")}
+                  className={`p-2 rounded-xl border text-xs font-semibold flex items-center gap-1.5 ${isDark?"bg-gray-800 border-gray-700 text-gray-300":"bg-white border-[#e2e8f0] text-[#64748b]"}`}>
+                  <ArrowLeft size={13}/> {tx.back}
+                </motion.button>
+                <h2 className={`font-['Plus_Jakarta_Sans',sans-serif] font-bold text-lg ${textMain}`}>{tx.proofTitle}</h2>
+              </div>
+              <div className={`flex-1 ${cardBg} rounded-2xl shadow-sm p-7 overflow-auto min-h-0`}>
+                <p className={`text-xs italic mb-4 ${textMuted}`}>Manual proofreading mode — click highlighted phrases to review. Corrections are optional.</p>
+                <div className={`font-['Plus_Jakarta_Sans',sans-serif] text-sm leading-8 space-y-5 ${textMain}`}>
+                  <p>Ti <motion.span whileHover={{backgroundColor:"#fce7f3"}} className="bg-pink-100 border-b-2 border-pink-400 px-0.5 rounded-sm cursor-pointer">maysa a polynomial</motion.span>{" "}ket buklen dagiti variables ken coefficients.</p>
+                  <p>Usarentayo ti <motion.span whileHover={{backgroundColor:"#ffedd5"}} className="bg-orange-100 border-b-2 border-orange-400 px-0.5 rounded-sm cursor-pointer">lokal a dialect</motion.span>{" "}tapno nalaklaka a maawatan dagiti ubing. Adda <motion.span whileHover={{backgroundColor:"#f3e8ff"}} className="bg-purple-100 border-b-2 border-purple-400 px-0.5 rounded-sm cursor-pointer">lima a saba</motion.span>{" "}amin.</p>
+                  <p>Nasken met a masigurado a dagiti termino a teknikal ket maibabagay iti lebel ti pannakaawat dagiti ubing.</p>
+                </div>
+              </div>
+              <div className="flex items-center justify-end gap-3 mt-3 shrink-0">
+                <motion.button whileHover={{scale:1.04}} whileTap={{scale:0.95}} onClick={()=>{handleSaveDraft();nav("library");}}
+                  className="px-5 py-2.5 text-sm font-bold text-white bg-gradient-to-r from-[#bf8ffd] to-[#a855f7] rounded-xl shadow">{tx.saveDraft}</motion.button>
+                <motion.button whileHover={{scale:1.04}} whileTap={{scale:0.95}} onClick={()=>setPrintOpen(true)}
+                  className="px-5 py-2.5 text-sm font-bold text-white bg-gradient-to-r from-[#2ec2fd] to-[#0091fa] rounded-xl shadow flex items-center gap-2"><Printer size={14}/> {tx.applyAll}</motion.button>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
+    </>
+  );
+}
+
+/* ─────────────────────────────────────────────────────
+   parseBold — converts **text** to <strong> without asterisks
+───────────────────────────────────────────────────── */
+function parseBold(text: string): React.ReactNode {
+  if (!text.includes("**")) return text;
+  const parts = text.split(/(\*\*[^*]+\*\*)/g);
+  return parts.map((part, i) =>
+    part.startsWith("**") && part.endsWith("**")
+      ? <strong key={i} className="font-semibold">{part.slice(2, -2)}</strong>
+      : part
+  );
+}
+
+/* ─────────────────────────────────────────────────────
+   Screen E — AI Assistant  (wider left panel, functional quick actions)
+───────────────────────────────────────────────────── */
+function AssistantPage({ lang, setLang, isDark, onToggleDark, allLibCards }:{
+  lang:Lang; setLang:(l:Lang)=>void; isDark:boolean; onToggleDark:()=>void;
+  allLibCards:{id:string;name:string;category:string}[];
+}) {
+  const tx = T[lang];
+  const en = lang==="en";
+
+  /* Demo initial messages */
+  const INIT_MSGS: ChatMsg[] = [
+    { id:"b0", type:"bot", content: en
+      ? <><b>Hello Teacher!</b> I'm Bao, your AI teaching assistant. I can help you create lesson plans, activities, summaries and more. What would you like to create today?</>
+      : <><b>Kamusta, Guro!</b> Ako si Bao. Maaari akong tumulong sa mga plano ng aralin, aktibidad, buod at iba pa. Ano ang gusto mong gawin ngayon?</> },
+    { id:"u0", type:"user", content: en?"Create a 30-minute lesson plan focusing on plant parts, including a group activity.":"Gumawa ng 30-minutong plano ng aralin tungkol sa mga bahagi ng halaman." },
+    { id:"b1", type:"bot", content: (
+      <div className="bg-white dark:bg-gray-800 border border-[#e2e8f0] rounded-xl p-4">
+        <p className="font-bold text-sm text-[#1e293b] mb-3">{en?"Lesson Plan: Parts of a Plant (Grade 3)":"Plano ng Aralin: Mga Bahagi ng Halaman (Grade 3)"}</p>
+        <div className="grid grid-cols-2 gap-3 mb-3">
+          {[{h:en?"Objectives":"Layunin",items:[en?"Identify major parts of a plant.":"Makilala ang mga pangunahing bahagi ng halaman.",en?"Describe root, stem, leaf functions.":"Ilarawan ang tungkulin ng ugat, tangkay, dahon."]},{h:en?"Materials":"Kagamitan",items:[en?"Potted plant, Sheets":"Palayok na halaman, Sheets",en?"Colored markers.":"Mga pangkulay."]}].map(({h,items})=>(
+            <div key={h}><p className="text-[10px] font-bold text-[#94a3b8] uppercase tracking-wider mb-1.5">{h}</p><ul className="text-xs space-y-1">{items.map(it=><li key={it}>• {it}</li>)}</ul></div>
+          ))}
+        </div>
+        <p className="text-[10px] font-bold text-[#94a3b8] uppercase tracking-wider mb-1.5">{en?"Lesson Flow":"Takbo ng Aralin"}</p>
+        {[{t:"00-05m",a:en?"Introduction: Plant Scavenger Hunt":"Panimula: Plant Scavenger Hunt"},{t:"05-15m",a:en?"Discussion: Visual aids for roots, stem, leaves.":"Talakayan: Visual aids para sa ugat, tangkay, dahon."},{t:"15-25m",a:en?"Group Activity: Label diagram in local dialect.":"Pangkatang Gawain: Mag-label ng diagram."},{t:"25-30m",a:en?"Wrap-up: Quick quiz!":"Pangwakas: Mabilis na pagsubok!"}].map(({t,a})=>(
+          <div key={t} className="flex gap-2 text-xs mb-1.5"><span className="font-bold text-[#2ec2fd] shrink-0 w-14">{t}</span><span className="text-[#64748b]">{a}</span></div>
+        ))}
+      </div>
+    )},
+  ];
+
+  const [messages, setMessages] = useState<ChatMsg[]>(INIT_MSGS);
+  const [message, setMessage] = useState("");
+  const [outputLang, setOutputLang] = useState("Filipino");
+  const [gradeLevel, setGradeLevel] = useState("Grade 3");
+  const [learningStyles, setLearningStyles] = useState<string[]>(["Visual","Kinesthetic"]);
+  const [showPicker, setShowPicker] = useState(false);
+  const [selId, setSelId] = useState<string|null>(null);
+  const toggleStyle = (s:string)=>setLearningStyles(p=>p.includes(s)?p.filter(x=>x!==s):[...p,s]);
+  const selCard = allLibCards.find(c=>c.id===selId);
+  const chatEndRef = useRef<HTMLDivElement>(null);
+
+  const scrollToBottom = () => chatEndRef.current?.scrollIntoView({ behavior:"smooth" });
+  useEffect(()=>{ scrollToBottom(); },[messages]);
+
+  /* Functional quick actions */
+  const quickActionResponses: Record<string,string> = {
+    [tx.lpLabel]: en
+      ? "Here's a 45-minute lesson plan for Grade 3 Science:\n\n**Objective:** Students will identify the parts of a plant.\n\n**00-10m** Motivation: Show a real plant and ask students what they see.\n**10-25m** Lesson Proper: Discuss roots, stem, leaves, flowers using visual aids.\n**25-40m** Activity: Students draw and label plant parts in their dialect.\n**40-45m** Evaluation: 5-item matching quiz."
+      : "Narito ang 45-minutong plano ng aralin para sa Grade 3 Agham:\n\n**Layunin:** Matukoy ng mga mag-aaral ang mga bahagi ng halaman.\n\n**00-10m** Motibasyon: Ipakita ang tunay na halaman.\n**10-25m** Talakayan: Ugat, tangkay, dahon gamit ang visual aids.\n**25-40m** Gawain: Gumuhit at mag-label sa kanilang diyalekto.\n**40-45m** Pagtatasa: 5-item na pagtatampok.",
+    [tx.actLabel]: en
+      ? "**Plant Parts Group Activity** 🌱\n\n**Materials:** Printed diagrams, colored pencils, reference book\n\n**Instructions:**\n1. Divide class into groups of 4.\n2. Each group receives a blank plant diagram.\n3. Label all parts in your local dialect.\n4. Present to the class with a function explanation.\n\n**Duration:** 20 minutes\n**Assessment:** Completeness (40%), Creativity (30%), Presentation (30%)"
+      : "**Pangkatang Gawain sa Mga Bahagi ng Halaman** 🌱\n\n**Kagamitan:** Naka-print na diagram, kulay na lapis\n\n**Tagubilin:**\n1. Hatiin ang klase sa grupo ng 4.\n2. Bawat grupo ay makatanggap ng blangkong diagram.\n3. Lagyan ng label sa lokal na wika.\n4. Ipresenta sa klase.\n\n**Tagal:** 20 minuto",
+    [tx.sumLabel]: en
+      ? "**Lesson Summary: Plant Parts** 📋\n\nA plant has four main parts:\n• **Roots** – Absorb water and nutrients from soil\n• **Stem** – Supports the plant and transports water\n• **Leaves** – Make food through photosynthesis\n• **Flowers** – Reproductive organs of the plant\n\nKey vocabulary in Waray: Gamot (roots), Tangkay (stem), Dahon (leaves), Bulaklak (flowers)."
+      : "**Buod ng Aralin: Mga Bahagi ng Halaman** 📋\n\nAng halaman ay may apat na pangunahing bahagi:\n• **Ugat** – Sumipsip ng tubig at sustansya\n• **Tangkay** – Sumuporta at nagdadala ng tubig\n• **Dahon** – Gumagawa ng pagkain\n• **Bulaklak** – Bahagi ng reproduksiyon",
+    [tx.moreLabel]: en
+      ? "Here are more things I can help you with:\n\n📝 **Worksheet Generator** – Create fill-in-the-blank exercises\n🎯 **Quiz Maker** – Multiple choice, true/false, matching\n🗣️ **Dialect Glossary** – Key terms in local dialects\n📊 **Progress Tracker** – Monitor student learning\n\nJust tell me which one you'd like!"
+      : "Narito ang iba pang maaari kong tulungan:\n\n📝 **Worksheet Generator** – Lumikha ng mga gawain\n🎯 **Quiz Maker** – Multiple choice, true/false\n🗣️ **Talasalitaan sa Diyalekto** – Mga pangunahing termino\n\nSabihin mo lang kung alin ang gusto mo!",
+  };
+
+  const handleQuickAction = (label: string) => {
+    const userMsg: ChatMsg = { id: Date.now()+"u", type:"user", content: `${label}` };
+    const botMsg: ChatMsg = { id: Date.now()+"b", type:"bot", content: (
+      <div className="whitespace-pre-wrap text-sm leading-relaxed">{parseBold(quickActionResponses[label] || `Generating ${label}...`)}</div>
+    )};
+    setMessages(prev=>[...prev, userMsg, botMsg]);
+  };
+
+  const handleSend = () => {
+    if (!message.trim()) return;
+    const userMsg: ChatMsg = { id: Date.now()+"u", type:"user", content: message };
+    const botReply: ChatMsg = { id: Date.now()+"b", type:"bot", content: en
+      ? `Thanks for your message! I'm processing your request about "${message}". Let me generate a tailored response for your Grade ${gradeLevel} class in ${outputLang}...`
+      : `Salamat sa iyong mensahe! Pinoproseso ko ang iyong kahilingan tungkol sa "${message}". Gagawa ako ng naaangkop na sagot para sa iyong Grade ${gradeLevel} klase sa ${outputLang}...` };
+    setMessages(prev=>[...prev, userMsg, botReply]);
+    setMessage("");
+  };
+
+  const quickActions = [
+    { label:tx.lpLabel, color:"#bf8ffd" },
+    { label:tx.actLabel, color:"#fe8bd0" },
+    { label:tx.sumLabel, color:"#2ec2fd" },
+    { label:tx.moreLabel, color:"#ffb425" },
+  ];
+
+  const cardBg = isDark?"bg-gray-800":"bg-white";
+  const textMain = isDark?"text-white":"text-[#1e293b]";
+  const textMuted = isDark?"text-gray-400":"text-[#64748b]";
+
+  return (
+    <div className="flex flex-col flex-1 min-h-0">
+      <div className="flex gap-4 flex-1 min-h-0 overflow-hidden">
+        {/* Left panel — wider */}
+        <div className="w-[280px] shrink-0 flex flex-col gap-3 overflow-auto">
+          <div className={`${cardBg} rounded-2xl p-4 shadow-sm`}>
+            <div className="flex items-center justify-between mb-3">
+              <p className={`font-['Poppins',sans-serif] font-bold text-xs ${textMain}`}>{tx.selFile}</p>
+              <button onClick={()=>setShowPicker(!showPicker)} className="text-[10px] text-[#2ec2fd] font-semibold hover:underline">{tx.changeFile} ›</button>
+            </div>
+            {showPicker && (
+              <div className={`mb-3 border rounded-xl overflow-hidden ${isDark?"border-gray-700 bg-gray-750":"border-[#e2e8f0] bg-[#f8fafc]"}`}>
+                <p className={`text-[10px] font-semibold px-3 pt-2 pb-1 uppercase tracking-wider ${textMuted}`}>{tx.selFromLib}</p>
+                {allLibCards.length===0 ? <p className={`text-xs px-3 pb-3 ${textMuted}`}>{tx.noFiles}</p>
+                  : <div className="divide-y divide-gray-100 max-h-44 overflow-auto">
+                    {allLibCards.map(card=>(
+                      <button key={card.id} onClick={()=>{setSelId(card.id);setShowPicker(false);}}
+                        className={`w-full text-left px-3 py-2.5 flex items-center gap-2 transition hover:bg-white ${selId===card.id?isDark?"bg-gray-700":"bg-white":""}`}>
+                        <div className="w-6 h-6 rounded-lg bg-[#fe8bd0]/15 flex items-center justify-center shrink-0"><FileText size={11} className="text-[#fe8bd0]"/></div>
+                        <div className="min-w-0 flex-1">
+                          <p className={`text-xs font-semibold truncate ${textMain}`}>{card.name}</p>
+                          <p className={`text-[10px] ${textMuted}`}>{card.category}</p>
+                        </div>
+                        {selId===card.id&&<Check size={11} className="text-[#2ec2fd] shrink-0"/>}
+                      </button>
+                    ))}
+                  </div>}
+              </div>
+            )}
+            <div className="flex items-start gap-2 bg-[#fff7fd] border border-[#fce7f3] rounded-xl p-3">
+              {/* Cow head pfp — small, horns visible, NOT circular */}
+              <div className="w-10 shrink-0 flex items-center justify-center" style={{ height:"32px" }}>
+                <img src={cowHead1Png} alt="Bao" style={{ height:"32px", width:"auto", objectFit:"contain" }}/>
+              </div>
+              <div className="min-w-0">
+                <p className={`text-xs font-semibold leading-snug ${textMain}`}>{selCard?selCard.name+".pdf":"Grade 3 Science - Plants (Waray+Filipino).pdf"}</p>
+                <p className={`text-[10px] mt-0.5 ${textMuted}`}>{tx.fileSize}</p>
+              </div>
+            </div>
+            <p className={`text-[10px] mt-2 leading-relaxed ${textMuted}`}>{tx.fileDesc}</p>
+          </div>
+
+          {/* Output preferences */}
+          <div className={`${cardBg} rounded-2xl p-4 shadow-sm`}>
+            <p className={`font-['Poppins',sans-serif] font-bold text-xs mb-3 ${textMain}`}>{tx.outPrefs}</p>
+            <div className="space-y-3">
+              <div>
+                <label className={`text-[10px] font-semibold uppercase tracking-wider block mb-1 ${textMuted}`}>{tx.outLang}</label>
+                <div className="relative">
+                  <select value={outputLang} onChange={e=>setOutputLang(e.target.value)} className={`w-full border rounded-xl px-3 py-2 text-xs font-medium appearance-none pr-7 focus:outline-none ${isDark?"bg-gray-700 border-gray-600 text-white":"bg-[#f8fafc] border-[#e2e8f0] text-[#1e293b]"}`}>
+                    {["Filipino","Waray","Ilocano","Cebuano"].map(l=><option key={l}>{l}</option>)}
+                  </select>
+                  <ChevronDown className={`absolute right-2 top-2.5 pointer-events-none ${textMuted}`} size={11}/>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className={`text-[10px] font-semibold uppercase tracking-wider block mb-1 ${textMuted}`}>{tx.gradeLevel}</label>
+                  <div className="relative">
+                    <select value={gradeLevel} onChange={e=>setGradeLevel(e.target.value)} className={`w-full border rounded-xl px-2 py-2 text-xs font-medium appearance-none pr-5 focus:outline-none ${isDark?"bg-gray-700 border-gray-600 text-white":"bg-[#f8fafc] border-[#e2e8f0] text-[#1e293b]"}`}>
+                      {["Grade 1","Grade 2","Grade 3","Grade 4","Grade 5","Grade 6"].map(g=><option key={g}>{g}</option>)}
+                    </select>
+                    <ChevronDown className={`absolute right-1.5 top-2.5 pointer-events-none ${textMuted}`} size={10}/>
+                  </div>
+                </div>
+                <div>
+                  <label className={`text-[10px] font-semibold uppercase tracking-wider block mb-1 ${textMuted}`}>{tx.duration}</label>
+                  <div className={`border rounded-xl px-2.5 py-2 text-xs font-medium flex items-center gap-1 ${isDark?"bg-gray-700 border-gray-600 text-white":"bg-[#f8fafc] border-[#e2e8f0] text-[#1e293b]"}`}>
+                    <Clock size={10} className="text-[#94a3b8]"/> 30 min
+                  </div>
+                </div>
+              </div>
+              <div>
+                <label className={`text-[10px] font-semibold uppercase tracking-wider block mb-2 ${textMuted}`}>{tx.learnStyle}</label>
+                <div className="flex flex-wrap gap-1.5">
+                  {["Visual","Kinesthetic","Auditory","Reading"].map(s=>(
+                    <motion.button key={s} onClick={()=>toggleStyle(s)} whileTap={{scale:0.88}}
+                      className={`text-[10px] px-2.5 py-1 rounded-lg font-semibold transition ${learningStyles.includes(s)?"bg-[#2ec2fd] text-white":`border ${isDark?"border-gray-600 text-gray-400":"border-[#e2e8f0] text-[#64748b]"}`}`}>
+                      {s}
+                    </motion.button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Right chat panel */}
+        <div className={`flex-1 flex flex-col ${cardBg} rounded-2xl shadow-sm overflow-hidden min-h-0`}>
+          {/* Chat header */}
+          <div className={`flex items-center gap-3 px-5 py-3.5 border-b ${isDark?"border-gray-700":"border-[#f1f5f9]"} shrink-0`}>
+            {/* Cow head — small, horns visible, no circle crop */}
+            <div className="flex items-center justify-center shrink-0" style={{ width:"36px", height:"32px" }}>
+              <img src={cowHead1Png} alt="Bao" style={{ height:"32px", width:"auto", objectFit:"contain" }}/>
+            </div>
+            <div>
+              <p className={`font-['Poppins',sans-serif] font-bold text-sm ${textMain}`}>Bao AI</p>
+              <div className="flex items-center gap-1">
+                <motion.div className="w-1.5 h-1.5 rounded-full bg-green-400"
+                  animate={{ opacity:[1,0.4,1] }} transition={{ duration:2, repeat:Infinity }}/>
+                <span className={`text-[10px] ${textMuted}`}>Online</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Messages */}
+          <div className="flex-1 overflow-auto p-5 space-y-4">
+            {messages.map((msg,i)=>(
+              <motion.div key={msg.id}
+                initial={{ opacity:0, y:10, scale:0.96 }}
+                animate={{ opacity:1, y:0, scale:1 }}
+                transition={{ type:"spring", stiffness:300, damping:24, delay:i<3?0:0 }}
+                className={`flex ${msg.type==="user"?"justify-end":"items-end gap-2"}`}>
+                {msg.type==="bot" && (
+                  <div className="flex items-center justify-center shrink-0" style={{ width:"28px", height:"24px" }}>
+                    <img src={cowHead1Png} alt="" style={{ height:"24px", width:"auto", objectFit:"contain" }}/>
+                  </div>
+                )}
+                <div className={`rounded-2xl px-4 py-3 max-w-[78%] ${msg.type==="user"
+                  ?"bg-gradient-to-br from-[#ffb425] to-[#f59e0b] text-white rounded-br-sm"
+                  :`rounded-bl-sm ${isDark?"bg-gray-700 text-gray-100":"bg-[#f8fafc] border border-[#e2e8f0] text-[#1e293b]"}`}`}>
+                  {typeof msg.content==="string"
+                    ? <p className="font-['Poppins',sans-serif] text-sm leading-relaxed whitespace-pre-wrap">{parseBold(msg.content)}</p>
+                    : msg.content}
+                </div>
+              </motion.div>
+            ))}
+            <div ref={chatEndRef}/>
+          </div>
+
+          {/* ── Quick Actions row — above the message box ── */}
+          <div className={`px-5 pt-3 pb-0 border-t ${isDark?"border-gray-700":"border-[#f1f5f9]"} shrink-0`}>
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className={`text-[10px] font-['Poppins',sans-serif] font-semibold mr-1 flex items-center gap-1 ${textMuted}`}>
+                <Zap size={10} className="text-[#ffb425]"/> {tx.quickActs}:
+              </span>
+              {quickActions.map(({label,color})=>(
+                <motion.button key={label}
+                  whileHover={{ scale:1.06, y:-1, boxShadow:`0 4px 16px ${color}40` }}
+                  whileTap={{ scale:0.93 }}
+                  onClick={()=>handleQuickAction(label)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-['Poppins',sans-serif] font-semibold border transition-all"
+                  style={{
+                    background:`${color}15`,
+                    borderColor:`${color}40`,
+                    color: color,
+                  }}>
+                  <div className="w-2 h-2 rounded-full shrink-0" style={{ background:color }}/>
+                  {label}
+                </motion.button>
+              ))}
+            </div>
+          </div>
+
+          {/* Input */}
+          <div className={`px-5 py-3 shrink-0`}>
+            <div className={`flex items-center gap-3 border rounded-2xl px-4 py-3 ${isDark?"bg-gray-700 border-gray-600":"bg-[#f8fafc] border-[#e2e8f0]"}`}>
+              <input value={message} onChange={e=>setMessage(e.target.value)}
+                onKeyDown={e=>e.key==="Enter"&&!e.shiftKey&&handleSend()}
+                placeholder={tx.typeMsg}
+                className={`flex-1 bg-transparent text-sm placeholder-[#94a3b8] outline-none font-['Poppins',sans-serif] ${textMain}`}/>
+              <motion.button whileHover={{scale:1.12,boxShadow:"0 6px 20px rgba(46,194,253,0.5)"}} whileTap={{scale:0.88}}
+                onClick={handleSend}
+                className="w-9 h-9 rounded-xl bg-gradient-to-br from-[#2ec2fd] to-[#0091fa] flex items-center justify-center shrink-0 shadow-md">
+                <Send size={14} className="text-white"/>
+              </motion.button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ─────────────────────────────────────────────────────
+   Screen F — Library
+───────────────────────────────────────────────────── */
+function LibraryPage({ lang, setLang, isDark, onToggleDark, draftFiles }:{
+  lang:Lang; setLang:(l:Lang)=>void; isDark:boolean; onToggleDark:()=>void; draftFiles:DraftFile[];
+}) {
+  const tx = T[lang];
+  type S = "complete"|"processing"|"review"|"error"|"draft"|"schedule";
+  const statusMap: Record<S,{lbl:string;cls:string;actLbl:string;actCls:string}> = {
+    complete:   {lbl:tx.complete,    cls:"bg-emerald-100 text-emerald-700", actLbl:tx.view,    actCls:"bg-[#2ec2fd] text-white"},
+    processing: {lbl:tx.processing,  cls:"bg-amber-100 text-amber-700",     actLbl:tx.track,   actCls:"bg-[#ffb425] text-white"},
+    review:     {lbl:tx.needsReview, cls:"bg-orange-100 text-orange-600",   actLbl:tx.review,  actCls:"bg-orange-400 text-white"},
+    error:      {lbl:tx.error,       cls:"bg-red-100 text-red-600",         actLbl:tx.retry,   actCls:"bg-red-400 text-white"},
+    draft:      {lbl:tx.draft,       cls:"bg-purple-100 text-purple-600",   actLbl:tx.edit,    actCls:"bg-[#bf8ffd] text-white"},
+    schedule:   {lbl:tx.schedule,    cls:"bg-amber-100 text-amber-700",     actLbl:tx.schedule,actCls:"bg-[#ffb425] text-white"},
+  };
+  const outerTint = (cat:string) => cat==="MATHEMATICS"||cat==="ENGLISH"?{bg:"#e0f7ff",border:"#bae6fd"}:cat==="SCIENCE"||cat==="FILIPINO"?{bg:"#f3e8ff",border:"#d8b4fe"}:{bg:"#ffe4f0",border:"#fbcfe8"};
+  const draftCards = draftFiles.map(d=>({id:d.id,category:d.category,title:d.grade,subtitle:d.subtitle,status:"draft" as S,name:d.name,date:d.date}));
+  const allCards = [...draftCards,...BASE_CARDS.map(c=>({...c,status:c.status as S}))];
+
+  return (
+    <div className="flex flex-col flex-1 min-h-0 overflow-auto">
+      <motion.h2 initial={{ opacity:0, x:-16 }} animate={{ opacity:1, x:0 }}
+        transition={{ duration:0.5, ease:[0.16,1,0.3,1] }}
+        className={`font-['Montserrat',sans-serif] font-bold text-2xl mb-4 shrink-0 ${isDark?"text-white":"text-[#1e293b]"}`}>
+        {tx.myLib}
+      </motion.h2>
+      <div className="grid grid-cols-3 gap-4 pb-6">
+        {allCards.map((card,i)=>{
+          const s = statusMap[card.status];
+          const tint = outerTint(card.category);
+          const baseCard = BASE_CARDS.find(b=>b.id===card.id);
+          return (
+            <motion.div key={card.id}
+              initial={{ opacity:0, y:20, scale:0.95 }}
+              animate={{ opacity:1, y:0, scale:1 }}
+              transition={{ duration:0.4, delay:i*0.07, ease:[0.16,1,0.3,1] }}
+              whileHover={{ y:-5, scale:1.016, boxShadow:`0 20px 40px ${tint.bg}` }}
+              whileTap={{ scale:0.97 }}
+              className={`rounded-[28px] p-3 border ${isDark?"bg-gray-800 border-gray-700":""}`}
+              style={isDark?{}:{ background:tint.bg, borderColor:tint.border }}>
+              <div className={`rounded-[20px] p-4 mb-3 shadow-sm ${isDark?"bg-gray-700":"bg-white"}`}>
+                <span className="text-[10px] font-['Poppins',sans-serif] font-bold uppercase tracking-widest"
+                  style={{ color:card.status==="draft"?"#bf8ffd":(baseCard?.catColor??"#2ec2fd") }}>
+                  {card.category}
+                </span>
+                <h3 className={`font-['Nunito',sans-serif] font-black text-base mt-0.5 leading-snug ${isDark?"text-white":"text-[#1e293b]"}`}>{card.title}</h3>
+                <p className={`text-[11px] mt-1 leading-relaxed ${isDark?"text-gray-400":"text-[#94a3b8]"}`}>{card.subtitle}</p>
+                <div className="flex items-center gap-2 mt-3">
+                  <span className={`text-[10px] font-bold px-2 py-1 rounded-lg uppercase ${s.cls}`}>{s.lbl}</span>
+                  <motion.button whileHover={{scale:1.06}} whileTap={{scale:0.92}}
+                    className={`text-[10px] font-bold px-2.5 py-1 rounded-lg uppercase hover:opacity-80 transition ${s.actCls}`}>{s.actLbl}</motion.button>
+                </div>
+              </div>
+              <div className="px-1">
+                <p className={`font-['Poppins',sans-serif] font-semibold text-xs ${isDark?"text-white":"text-[#1e293b]"}`}>{card.name}</p>
+                <p className={`text-[10px] mt-0.5 ${isDark?"text-gray-500":"text-[#64748b]"}`}>{card.date}</p>
+              </div>
+            </motion.div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/* ─────────────────────────────────────────────────────
+   Reusable Settings Toggle Switch
+───────────────────────────────────────────────────── */
+function SettingsToggle({ checked, onChange, color = "#2ec2fd" }: {
+  checked: boolean; onChange: () => void; color?: string;
+}) {
+  return (
+    <motion.button onClick={onChange} whileTap={{ scale:0.88 }}
+      className="relative shrink-0 rounded-full"
+      style={{ width:"46px", height:"25px", background: checked ? color : "rgba(0,0,0,0.15)" }}
+      transition={{ duration:0.2 }}>
+      <motion.div className="absolute top-[3px] rounded-full bg-white shadow-sm"
+        style={{ width:"19px", height:"19px" }}
+        animate={{ x: checked ? 22 : 4 }}
+        transition={{ type:"spring", stiffness:500, damping:30 }}/>
+    </motion.button>
+  );
+}
+
+/* ─────────────────────────────────────────────────────
+   Screen G — Settings Page
+───────────────────────────────────────────────────── */
+function SettingsPage({ lang, isDark, userName }: {
+  lang: Lang; isDark: boolean; userName: string;
+}) {
+  const tx = T[lang];
+  const [activeTab, setActiveTab] = useState("profile");
+  const [saved, setSaved] = useState(false);
+
+  // Profile
+  const [fullName, setFullName] = useState(userName || "Teacher");
+  const [email, setEmail] = useState("teacher@school.edu.ph");
+  const [teacherId, setTeacherId] = useState("TCH-2026-001");
+  const [schoolName, setSchoolName] = useState("Leyte National High School");
+
+  // Preferences
+  const [defaultDialect, setDefaultDialect] = useState("Waray (Samar-Leyte)");
+  const [defaultGrade, setDefaultGrade] = useState("Grade 3");
+  const [defaultExportFmt, setDefaultExportFmt] = useState("PDF");
+  const [autoProofread, setAutoProofread] = useState(true);
+
+  // Notifications
+  const [emailNotifs, setEmailNotifs] = useState(true);
+  const [pushNotifs, setPushNotifs] = useState(false);
+  const [progressReminders, setProgressReminders] = useState(true);
+  const [dialectUpdates, setDialectUpdates] = useState(true);
+
+  // Appearance
+  const [theme, setTheme] = useState("light");
+  const [fontSize, setFontSize] = useState("medium");
+
+  // AI
+  const [translationStyle, setTranslationStyle] = useState("kid-friendly");
+  const [includeIllustrations, setIncludeIllustrations] = useState(false);
+  const [twoFactor, setTwoFactor] = useState(false);
+
+  const en = lang === "en";
+  const bg = isDark ? "bg-gray-800" : "bg-white";
+  const textMain = isDark ? "text-white" : "text-[#1e293b]";
+  const textMuted = isDark ? "text-gray-400" : "text-[#64748b]";
+  const borderCls = isDark ? "border-gray-700" : "border-[#f1f5f9]";
+  const inputCls = `w-full border rounded-xl px-3 py-2.5 text-sm font-['Poppins',sans-serif] outline-none focus:ring-2 focus:ring-[#2ec2fd]/30 transition ${isDark ? "bg-gray-700 border-gray-600 text-white placeholder-gray-500" : "bg-[#f8fafc] border-[#e2e8f0] text-[#1e293b] placeholder-[#94a3b8]"}`;
+
+  const handleSave = () => {
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2500);
+  };
+
+  const tabs = [
+    { id:"profile",       icon:User,        label: en?"Profile":"Profil" },
+    { id:"security",      icon:Shield,       label: en?"Account & Security":"Account at Seguridad" },
+    { id:"preferences",   icon:Sliders,      label: en?"App Preferences":"Mga Kagustuhan" },
+    { id:"notifications", icon:Bell,         label: en?"Notifications":"Mga Abiso" },
+    { id:"appearance",    icon:Palette,      label: en?"Appearance":"Hitsura" },
+    { id:"ai",            icon:Zap,          label: en?"AI & Translation":"AI at Pagsasalin" },
+    { id:"help",          icon:HelpCircle,   label: en?"Help & Support":"Tulong at Suporta" },
+  ];
+
+  /* ── Section Card wrapper ── */
+  const Card = ({ title, children }: { title: string; children: React.ReactNode }) => (
+    <motion.div initial={{ opacity:0, y:8 }} animate={{ opacity:1, y:0 }}
+      transition={{ duration:0.3, ease:[0.16,1,0.3,1] }}
+      className={`${bg} rounded-2xl p-6 shadow-sm border mb-4 ${borderCls}`}>
+      <h3 className={`font-['Nunito',sans-serif] font-extrabold text-base mb-5 ${textMain}`}>{title}</h3>
+      {children}
+    </motion.div>
+  );
+
+  /* ── Row: label + control ── */
+  const Row = ({ label, sublabel, children }: { label: string; sublabel?: string; children: React.ReactNode }) => (
+    <div className={`flex items-center justify-between py-3 border-b last:border-0 ${borderCls}`}>
+      <div className="min-w-0 mr-4">
+        <p className={`text-sm font-['Poppins',sans-serif] font-medium ${textMain}`}>{label}</p>
+        {sublabel && <p className={`text-[11px] font-['Poppins',sans-serif] mt-0.5 ${textMuted}`}>{sublabel}</p>}
+      </div>
+      <div className="shrink-0">{children}</div>
+    </div>
+  );
+
+  /* ── Section contents ── */
+  const renderContent = () => {
+    switch (activeTab) {
+
+      case "profile": return (
+        <div>
+          <Card title={en?"Profile Information":"Impormasyon ng Profil"}>
+            {/* Avatar */}
+            <div className="flex items-center gap-5 mb-6 pb-5 border-b" style={{ borderColor: isDark?"rgba(255,255,255,0.08)":"rgba(0,0,0,0.06)" }}>
+              <div className="relative shrink-0">
+                <div className="w-20 h-20 rounded-full overflow-hidden border-4 border-[#2ec2fd]/30 bg-[#e0f8ff] flex items-center justify-center"
+                  style={{ boxShadow:"0 0 20px rgba(46,194,253,0.2)" }}>
+                  <img src={cowHead1Png} alt="Profile" className="w-full h-full object-cover" style={{ objectPosition:"center 35%" }}/>
+                </div>
+                <motion.button whileHover={{scale:1.1}} whileTap={{scale:0.9}}
+                  className="absolute -bottom-1 -right-1 w-7 h-7 rounded-full bg-[#2ec2fd] flex items-center justify-center shadow-lg border-2 border-white">
+                  <Pencil size={11} className="text-white"/>
+                </motion.button>
+              </div>
+              <div>
+                <p className={`font-['Montserrat',sans-serif] font-bold text-lg ${textMain}`}>{fullName}</p>
+                <p className={`text-sm font-['Poppins',sans-serif] ${textMuted}`}>{email}</p>
+                <span className="mt-1 inline-block text-[10px] font-bold px-2 py-0.5 bg-[#2ec2fd]/15 text-[#0a88c8] rounded-lg uppercase tracking-wider">Teacher</span>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              {[
+                { label: en?"Full Name":"Buong Pangalan", value:fullName, set:setFullName, type:"text" },
+                { label: en?"Email":"Email", value:email, set:setEmail, type:"email" },
+                { label: en?"Teacher ID":"ID ng Guro", value:teacherId, set:setTeacherId, type:"text" },
+                { label: en?"School Name":"Pangalan ng Paaralan", value:schoolName, set:setSchoolName, type:"text" },
+              ].map(({label,value,set,type})=>(
+                <div key={label}>
+                  <label className={`text-[11px] font-['Poppins',sans-serif] font-semibold uppercase tracking-wider block mb-1.5 ${textMuted}`}>{label}</label>
+                  <input type={type} value={value} onChange={e=>set(e.target.value)} className={inputCls}/>
+                </div>
+              ))}
+            </div>
+            <motion.button whileHover={{scale:1.02}} whileTap={{scale:0.96}} onClick={handleSave}
+              className="mt-5 px-5 py-2.5 text-sm font-['Poppins',sans-serif] font-bold text-white bg-gradient-to-r from-[#2ec2fd] to-[#0091fa] rounded-xl shadow-md flex items-center gap-2">
+              <Save size={14}/> {en?"Save Profile":"I-save ang Profil"}
+            </motion.button>
+          </Card>
+        </div>
+      );
+
+      case "security": return (
+        <div>
+          <Card title={en?"Account & Security":"Account at Seguridad"}>
+            <Row label={en?"Change Password":"Palitan ang Password"}
+              sublabel={en?"Last changed 3 months ago":"Huling binago 3 buwan na ang nakakaraan"}>
+              <motion.button whileHover={{scale:1.04}} whileTap={{scale:0.94}}
+                className={`px-4 py-2 text-xs font-['Poppins',sans-serif] font-semibold rounded-xl border flex items-center gap-1.5 transition ${isDark?"border-gray-600 text-gray-300 hover:bg-gray-700":"border-[#e2e8f0] text-[#64748b] hover:bg-[#f8fafc]"}`}>
+                <Lock size={12}/> {en?"Change":"Palitan"}
+              </motion.button>
+            </Row>
+            <Row label={en?"Two-Factor Authentication":"Two-Factor Authentication"}
+              sublabel={en?"Add an extra layer of security":"Magdagdag ng karagdagang seguridad"}>
+              <SettingsToggle checked={twoFactor} onChange={()=>setTwoFactor(!twoFactor)} color="#2ec2fd"/>
+            </Row>
+            <Row label={en?"Login History":"Kasaysayan ng Login"}
+              sublabel={en?"View recent login activity":"Tingnan ang kamakailang aktibidad"}>
+              <motion.button whileHover={{scale:1.04}} whileTap={{scale:0.94}}
+                className={`px-4 py-2 text-xs font-semibold rounded-xl border flex items-center gap-1.5 ${isDark?"border-gray-600 text-gray-300":"border-[#e2e8f0] text-[#64748b]"}`}>
+                <Globe size={12}/> {en?"View":"Tingnan"}
+              </motion.button>
+            </Row>
+          </Card>
+          <Card title={en?"Danger Zone":"Danger Zone"}>
+            <div className={`p-4 rounded-xl border ${isDark?"bg-red-950/30 border-red-900/40":"bg-red-50 border-red-100"}`}>
+              <p className={`text-sm font-['Poppins',sans-serif] font-medium mb-1 ${isDark?"text-red-400":"text-red-600"}`}>{en?"Delete Account":"I-delete ang Account"}</p>
+              <p className={`text-xs font-['Poppins',sans-serif] mb-3 ${isDark?"text-red-500/70":"text-red-500"}`}>{en?"This action is permanent and cannot be undone.":"Ang pagkilos na ito ay permanente at hindi na mababalik."}</p>
+              <motion.button whileHover={{scale:1.03}} whileTap={{scale:0.95}}
+                className="px-4 py-2 text-xs font-bold text-white bg-red-500 rounded-xl flex items-center gap-1.5 hover:bg-red-600 transition">
+                <Trash2 size={12}/> {en?"Delete Account":"I-delete ang Account"}
+              </motion.button>
+            </div>
+          </Card>
+        </div>
+      );
+
+      case "preferences": return (
+        <div>
+          <Card title={en?"App Preferences":"Mga Kagustuhan ng App"}>
+            {[
+              { label: en?"Default Input Language":"Default na Input Language",
+                content: (
+                  <div className="flex gap-2">
+                    {["English","Tagalog"].map(l=>(
+                      <motion.button key={l} whileTap={{scale:0.9}}
+                        onClick={()=>{}}
+                        className="px-3 py-1.5 text-xs font-semibold rounded-lg border transition"
+                        style={{ background: l==="English" ? "#2ec2fd" : "transparent",
+                          color: l==="English" ? "#fff" : isDark?"#9ca3af":"#64748b",
+                          borderColor: l==="English" ? "#2ec2fd" : isDark?"#4b5563":"#e2e8f0" }}>
+                        {l}
+                      </motion.button>
+                    ))}
+                  </div>
+                )},
+              { label: en?"Default Target Dialect":"Default na Target Diyalekto",
+                content: (
+                  <div className="relative">
+                    <select value={defaultDialect} onChange={e=>setDefaultDialect(e.target.value)}
+                      className={`${inputCls} pr-8 appearance-none`}>
+                      {["Waray (Samar-Leyte)","Ilocano","Cebuano","Bicolano","Kapampangan","Hiligaynon","Pangasinense"].map(d=><option key={d}>{d}</option>)}
+                    </select>
+                    <ChevronDown className={`absolute right-2.5 top-3 pointer-events-none ${textMuted}`} size={13}/>
+                  </div>
+                )},
+              { label: en?"Default Grade Level":"Default na Antas",
+                content: (
+                  <div className="relative">
+                    <select value={defaultGrade} onChange={e=>setDefaultGrade(e.target.value)}
+                      className={`${inputCls} pr-8 appearance-none`}>
+                      {["Grade 1","Grade 2","Grade 3","Grade 4","Grade 5","Grade 6"].map(g=><option key={g}>{g}</option>)}
+                    </select>
+                    <ChevronDown className={`absolute right-2.5 top-3 pointer-events-none ${textMuted}`} size={13}/>
+                  </div>
+                )},
+              { label: en?"Default Export Format":"Default na Format ng Export",
+                content: (
+                  <div className="flex gap-2">
+                    {["PDF","DOCX"].map(f=>(
+                      <motion.button key={f} whileTap={{scale:0.9}}
+                        onClick={()=>setDefaultExportFmt(f)}
+                        className="px-3 py-1.5 text-xs font-semibold rounded-lg border transition"
+                        style={{ background: defaultExportFmt===f ? "#0073ff" : "transparent",
+                          color: defaultExportFmt===f ? "#fff" : isDark?"#9ca3af":"#64748b",
+                          borderColor: defaultExportFmt===f ? "#0073ff" : isDark?"#4b5563":"#e2e8f0" }}>
+                        {f}
+                      </motion.button>
+                    ))}
+                  </div>
+                )},
+            ].map(({label,content})=>(
+              <Row key={label} label={label}>{content}</Row>
+            ))}
+            <Row label={en?"Auto Proofread after translation":"Auto Proofread pagkatapos magsalin"}
+              sublabel={en?"Automatically enter proofread mode":"Awtomatikong pumasok sa proofread mode"}>
+              <SettingsToggle checked={autoProofread} onChange={()=>setAutoProofread(!autoProofread)} color="#bf8ffd"/>
+            </Row>
+          </Card>
+        </div>
+      );
+
+      case "notifications": return (
+        <div>
+          <Card title={en?"Notification Settings":"Mga Setting ng Abiso"}>
+            {[
+              { label:en?"Email notifications for new translations":"Email para sa bagong pagsasalin", sub:en?"Get notified when translations complete":"Maabisuhan kapag tapos na ang pagsasalin", checked:emailNotifs, set:()=>setEmailNotifs(!emailNotifs) },
+              { label:en?"Push notifications":"Push notifications", sub:en?"Browser push alerts":"Mga push alert sa browser", checked:pushNotifs, set:()=>setPushNotifs(!pushNotifs) },
+              { label:en?"Progress reminders":"Mga paalala ng progreso", sub:en?"Weekly translation progress summary":"Lingguhang buod ng progreso", checked:progressReminders, set:()=>setProgressReminders(!progressReminders) },
+              { label:en?"New dialect updates":"Mga bagong update ng diyalekto", sub:en?"Notify when new dialects are added":"Abisuhan kapag may bagong diyalekto", checked:dialectUpdates, set:()=>setDialectUpdates(!dialectUpdates) },
+            ].map(({label,sub,checked,set})=>(
+              <Row key={label} label={label} sublabel={sub}>
+                <SettingsToggle checked={checked} onChange={set} color="#ffb425"/>
+              </Row>
+            ))}
+          </Card>
+        </div>
+      );
+
+      case "appearance": return (
+        <div>
+          <Card title={en?"Appearance":"Hitsura"}>
+            <Row label={en?"Theme":"Tema"} sublabel={en?"Choose your preferred color theme":"Piliin ang iyong gustong kulay ng tema"}>
+              <div className="flex gap-2">
+                {[{v:"light",l:en?"Light":"Maliwanag"},{v:"dark",l:en?"Dark":"Madilim"},{v:"system",l:en?"System":"System"}].map(({v,l})=>(
+                  <motion.button key={v} whileTap={{scale:0.9}}
+                    onClick={()=>setTheme(v)}
+                    className="px-3 py-1.5 text-xs font-semibold rounded-lg border transition"
+                    style={{ background: theme===v ? "#2ec2fd" : "transparent",
+                      color: theme===v ? "#fff" : isDark?"#9ca3af":"#64748b",
+                      borderColor: theme===v ? "#2ec2fd" : isDark?"#4b5563":"#e2e8f0" }}>
+                    {l}
+                  </motion.button>
+                ))}
+              </div>
+            </Row>
+            <Row label={en?"Font Size":"Laki ng Font"} sublabel={en?"Adjust the text size":"I-adjust ang laki ng teksto"}>
+              <div className="flex gap-2">
+                {[{v:"small",l:"S"},{v:"medium",l:"M"},{v:"large",l:"L"}].map(({v,l})=>(
+                  <motion.button key={v} whileTap={{scale:0.9}}
+                    onClick={()=>setFontSize(v)}
+                    className="w-9 h-9 text-xs font-bold rounded-lg border transition"
+                    style={{ background: fontSize===v ? "#2ec2fd" : "transparent",
+                      color: fontSize===v ? "#fff" : isDark?"#9ca3af":"#64748b",
+                      borderColor: fontSize===v ? "#2ec2fd" : isDark?"#4b5563":"#e2e8f0" }}>
+                    {l}
+                  </motion.button>
+                ))}
+              </div>
+            </Row>
+            <Row label={en?"Sidebar Mode":"Mode ng Sidebar"} sublabel={en?"Always open or collapsible":"Laging bukas o maaaring isara"}>
+              <div className="flex gap-2">
+                {[{v:"always",l:en?"Always Open":"Laging Bukas"},{v:"collapse",l:en?"Collapsible":"Maisasara"}].map(({v,l})=>(
+                  <motion.button key={v} whileTap={{scale:0.9}}
+                    className="px-3 py-1.5 text-xs font-semibold rounded-lg border transition"
+                    style={{ background: "auto"===v ? "#2ec2fd" : "transparent",
+                      color: isDark?"#9ca3af":"#64748b",
+                      borderColor: isDark?"#4b5563":"#e2e8f0" }}>
+                    {l}
+                  </motion.button>
+                ))}
+              </div>
+            </Row>
+          </Card>
+        </div>
+      );
+
+      case "ai": return (
+        <div>
+          <Card title={en?"AI & Translation Settings":"Mga Setting ng AI at Pagsasalin"}>
+            <Row label={en?"Translation Style":"Istilo ng Pagsasalin"} sublabel={en?"How Bao adapts the language":"Paano inangkop ni Bao ang wika"}>
+              <div className="flex gap-2 flex-wrap">
+                {[{v:"simple",l:en?"Simple":"Simple"},{v:"formal",l:en?"Formal":"Pormal"},{v:"kid-friendly",l:en?"Kid-Friendly":"Para sa Bata"}].map(({v,l})=>(
+                  <motion.button key={v} whileTap={{scale:0.9}}
+                    onClick={()=>setTranslationStyle(v)}
+                    className="px-3 py-1.5 text-xs font-semibold rounded-lg border transition"
+                    style={{ background: translationStyle===v ? "#ffb425" : "transparent",
+                      color: translationStyle===v ? "#fff" : isDark?"#9ca3af":"#64748b",
+                      borderColor: translationStyle===v ? "#ffb425" : isDark?"#4b5563":"#e2e8f0" }}>
+                    {l}
+                  </motion.button>
+                ))}
+              </div>
+            </Row>
+            <Row label={en?"Maximum Output Length":"Maximum na Haba ng Output"} sublabel={en?"Controls how long translations can be":"Kinokontrol ang haba ng pagsasalin"}>
+              <div className="relative">
+                <select className={`${inputCls} pr-8 appearance-none`} style={{ width:"160px" }}>
+                  {[en?"Short (1-2 pages)":"Maikli",en?"Medium (3-5 pages)":"Katamtaman",en?"Long (6+ pages)":"Mahaba"].map(o=><option key={o}>{o}</option>)}
+                </select>
+                <ChevronDown className={`absolute right-2.5 top-3 pointer-events-none ${textMuted}`} size={13}/>
+              </div>
+            </Row>
+            <Row label={en?"Include illustrations in output":"Isama ang mga ilustrasyon sa output"} sublabel={en?"AI-suggested diagram suggestions":"Mga mungkahing diagram ng AI"}>
+              <SettingsToggle checked={includeIllustrations} onChange={()=>setIncludeIllustrations(!includeIllustrations)} color="#fe8bd0"/>
+            </Row>
+          </Card>
+        </div>
+      );
+
+      case "help": return (
+        <div>
+          <Card title={en?"Help & Support":"Tulong at Suporta"}>
+            {[
+              { icon:Mail, label:en?"Contact Support":"Makipag-ugnayan sa Suporta", sub:en?"Get help from our team":"Humingi ng tulong mula sa aming koponan", color:"#2ec2fd" },
+              { icon:Book, label:en?"Tutorial / Help Center":"Tutorial at Help Center", sub:en?"Learn how to use DiyaLikha AI":"Alamin kung paano gamitin ang DiyaLikha AI", color:"#bf8ffd" },
+              { icon:MessageSquare, label:en?"Send Feedback":"Magpadala ng Feedback", sub:en?"Help us improve the app":"Tulungan kaming pagbutihin ang app", color:"#ffb425" },
+            ].map(({icon:Icon,label,sub,color})=>(
+              <motion.button key={label} whileHover={{x:4}} whileTap={{scale:0.97}}
+                className={`w-full flex items-center gap-4 py-3.5 border-b last:border-0 text-left transition ${borderCls}`}>
+                <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
+                  style={{ background:`${color}18` }}>
+                  <Icon size={18} style={{ color }}/>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className={`text-sm font-['Poppins',sans-serif] font-semibold ${textMain}`}>{label}</p>
+                  <p className={`text-xs ${textMuted}`}>{sub}</p>
+                </div>
+                <ChevronDown className={`-rotate-90 shrink-0 ${textMuted}`} size={16}/>
+              </motion.button>
+            ))}
+          </Card>
+          {/* Bao mascot card */}
+          <div className="rounded-2xl p-5 overflow-hidden relative"
+            style={{ background:"linear-gradient(135deg,#1ec9ff 0%,#0099ee 100%)", boxShadow:"0 8px 24px rgba(46,194,253,0.3)" }}>
+            <div className="relative z-10">
+              <p className="font-['Montserrat',sans-serif] font-bold text-white text-lg leading-tight">{en?"Need help?":"Kailangan ng tulong?"}</p>
+              <p className="font-['Poppins',sans-serif] text-white/80 text-xs mt-1 max-w-[200px]">{en?"Bao is always here to guide you!":"Si Bao ay laging nandito para gabayan ka!"}</p>
+              <motion.button whileHover={{scale:1.04}} whileTap={{scale:0.94}}
+                className="mt-3 px-4 py-2 bg-white text-[#0073ff] text-xs font-bold rounded-xl">
+                {en?"Chat with Bao":"Makipag-chat kay Bao"}
+              </motion.button>
+            </div>
+            <img src={cowHead1Png} alt="Bao" className="absolute right-0 bottom-0 h-full object-contain object-right-bottom opacity-90"
+              style={{ filter:"drop-shadow(0 4px 12px rgba(0,0,0,0.15))" }}/>
+          </div>
+        </div>
+      );
+
+      default: return null;
+    }
+  };
+
+  return (
+    <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
+      {/* Page title */}
+      <motion.h2 initial={{ opacity:0, x:-12 }} animate={{ opacity:1, x:0 }}
+        transition={{ duration:0.4, ease:[0.16,1,0.3,1] }}
+        className={`font-['Montserrat',sans-serif] font-bold text-2xl mb-4 shrink-0 ${textMain}`}>
+        {en?"Settings":"Mga Setting"}
+      </motion.h2>
+
+      <div className="flex gap-5 flex-1 min-h-0 overflow-hidden">
+        {/* Left tab navigation */}
+        <div className="w-[200px] shrink-0 flex flex-col gap-1 overflow-auto">
+          {tabs.map(({id,icon:Icon,label})=>{
+            const isActive = activeTab === id;
+            return (
+              <motion.button key={id} onClick={()=>setActiveTab(id)}
+                whileHover={{ x: isActive ? 0 : 3 }} whileTap={{ scale:0.96 }}
+                className="relative w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all text-left overflow-hidden"
+                style={{ background: isActive ? "rgba(46,194,253,0.12)" : "transparent" }}>
+                {isActive && (
+                  <motion.div layoutId="settings-tab-bg" className="absolute inset-0 rounded-xl"
+                    style={{ background:"rgba(46,194,253,0.1)", border:"1px solid rgba(46,194,253,0.2)" }}
+                    transition={{ type:"spring", stiffness:380, damping:30 }}/>
+                )}
+                <Icon size={15} className="relative z-10 shrink-0"
+                  style={{ color: isActive ? "#0073ff" : isDark?"#6b7280":"#94a3b8" }}/>
+                <span className="relative z-10 text-[12px] font-['Poppins',sans-serif] font-medium leading-tight"
+                  style={{ color: isActive ? "#0073ff" : isDark?"#9ca3af":"#64748b",
+                    fontWeight: isActive ? 600 : 500 }}>
+                  {label}
+                </span>
+                {isActive && (
+                  <motion.div className="absolute right-2 w-1.5 h-1.5 rounded-full bg-[#2ec2fd]"
+                    layoutId="settings-tab-dot" transition={{ type:"spring", stiffness:380, damping:30 }}/>
+                )}
+              </motion.button>
+            );
+          })}
+        </div>
+
+        {/* Right content */}
+        <div className="flex-1 overflow-auto">
+          <AnimatePresence mode="wait">
+            <motion.div key={activeTab}
+              initial={{ opacity:0, x:12 }} animate={{ opacity:1, x:0 }}
+              exit={{ opacity:0, x:-8 }}
+              transition={{ duration:0.2, ease:[0.16,1,0.3,1] }}>
+              {renderContent()}
+            </motion.div>
+          </AnimatePresence>
+        </div>
+      </div>
+
+      {/* Floating Save toast */}
+      <AnimatePresence>
+        {saved && (
+          <motion.div
+            initial={{ opacity:0, y:16, scale:0.94 }} animate={{ opacity:1, y:0, scale:1 }}
+            exit={{ opacity:0, y:8, scale:0.94 }}
+            transition={{ type:"spring", stiffness:360, damping:28 }}
+            className="fixed bottom-6 left-1/2 z-50 flex items-center gap-2.5 px-5 py-3 rounded-2xl shadow-xl"
+            style={{ transform:"translateX(-50%)", background:"linear-gradient(135deg,#2ec2fd,#0091fa)",
+              boxShadow:"0 8px 32px rgba(46,194,253,0.45)" }}>
+            <Check size={16} className="text-white"/>
+            <span className="text-sm font-['Poppins',sans-serif] font-semibold text-white">
+              {en?"Settings saved!":"Na-save ang mga setting!"}
+            </span>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+/* ─────────────────────────────────────────────────────
+   App Root
+───────────────────────────────────────────────────── */
+export default function App() {
+  const [view, setView] = useState<View>("login");
+  const [lang, setLang] = useState<Lang>("en");
+  const [isDark, setIsDark] = useState(false);
+  const [draftFiles, setDraftFiles] = useState<DraftFile[]>([]);
+  const [userName, setUserName] = useState("User");
+
+  useEffect(() => {
+    document.documentElement.classList.toggle("dark", isDark);
+    document.documentElement.style.colorScheme = isDark ? "dark" : "light";
+  }, [isDark]);
+
+  const handleLogin = (name: string) => { setUserName(name||"User"); setView("home"); };
+  const handleSaveDraft = (f: DraftFile) => {
+    setDraftFiles(prev => prev.find(p=>p.id===f.id) ? prev : [f,...prev]);
+    setView("library");
+  };
+  const allLibCards = [...draftFiles.map(d=>({id:d.id,name:d.name,category:d.category})),...BASE_CARDS.map(c=>({id:c.id,name:c.name,category:c.category}))];
+
+  if (view==="login") return <LoginPage onLogin={handleLogin} lang={lang}/>;
+
+  const toggleDark = () => setIsDark(d=>!d);
+  const sharedProps = { lang, setLang, isDark, onToggleDark: toggleDark };
+
+  return (
+    <div className="flex h-screen w-screen overflow-hidden p-4 gap-4 transition-colors duration-300"
+      style={{ background:isDark?"linear-gradient(135deg,#0a0e1a 0%,#0f1729 50%,#0a0e1a 100%)":"linear-gradient(234deg,rgba(197,179,250,.09) 17%,rgba(43,30,255,.09) 42%,rgba(239,56,171,.09) 78%,rgba(255,210,247,.09) 99%),linear-gradient(90deg,#f9fbff 0%,#f9fbff 100%)" }}>
+      <Sidebar active={view} nav={setView} isDark={isDark}/>
+
+      {/* Outer column — header is STATIC (never re-mounts between pages) */}
+      <div className="flex-1 min-w-0 flex flex-col gap-0">
+
+        {/* ── Static header — rendered once at this level, outside AnimatePresence. ── */}
+        <AppHeader lang={lang} setLang={setLang} isDark={isDark} onToggleDark={toggleDark} nav={setView} activeView={view}/>
+
+        {/* Page content — opacity-only fade; no overflow-hidden so hovered cards aren't clipped */}
+        <AnimatePresence mode="wait">
+          <motion.main key={view}
+            initial={{ opacity:0 }} animate={{ opacity:1 }} exit={{ opacity:0 }}
+            transition={{ duration:0.2, ease:"easeInOut" }}
+            className="flex-1 min-w-0 flex flex-col">
+            {view==="home"       && <HomePage      {...sharedProps} nav={setView} userName={userName}/>}
+            {view==="translator" && <TranslatorPage {...sharedProps} nav={setView} onSaveDraft={handleSaveDraft}/>}
+            {view==="assistant"  && <AssistantPage  {...sharedProps} allLibCards={allLibCards}/>}
+            {view==="library"    && <LibraryPage    {...sharedProps} draftFiles={draftFiles}/>}
+            {view==="settings"   && <SettingsPage lang={lang} isDark={isDark} userName={userName}/>}
+          </motion.main>
+        </AnimatePresence>
+
+      </div>
+    </div>
+  );
+}
